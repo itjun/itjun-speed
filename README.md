@@ -42,8 +42,15 @@ dotnet publish src/LanSpeed.Cli -c Release -r linux-x64 --self-contained -o publ
 dotnet run --project src/LanSpeed.App
 ```
 
-或安装 MSIX 包（见下节）。界面五页：主机（扫描 / 快速测速）、分组（星形 / 矩阵）、结果、历史、设置
-（允许被测 / 端口 / 防火墙自检与一键放行 / 开机自启 / 检查更新）。关闭窗口隐藏到托盘，退出走托盘菜单。
+或安装 MSIX 包（见下节）。界面六页：
+- **主机**：打开自动扫描（可关），主机表带状态与快速测速；
+- **两机测试**：A、B 从扫描结果下拉选择或手动输入任意 IP（跨网段可用）；A 选「本机」即常规单测，A、B 都选远程主机时本机仅作发起机（打流只在两机之间）。结果为 **1Panel 风格报表**：结论徽章横幅、蓝色 A→B / 绿色 B→A 大数字卡（无流量方向自动置灰）、峰值/重传/RTT/抖动/链路上限指标卡、**LiveCharts2 逐秒速率曲线**（底部图例 + 坐标轴）；
+- **分组**（星形 / 矩阵）、**结果**、**历史**、**设置**（允许被测 / 端口 / 防火墙自检与一键放行 / 开机自启 / 检查更新）。
+关闭窗口隐藏到托盘，退出走托盘菜单。诊断日志：`%LOCALAPPDATA%\LanSpeed\ui-debug.log`。
+
+**应用图标**（`src/LanSpeed.App/Assets/`，`scripts/make-icons.py` 可重新生成）：品牌蓝渐变圆角底 + 白色速度表盘；
+`app.ico`（16–256 多尺寸）嵌入 exe（任务栏/窗口/文件管理器）并用于 MSIX 徽标；托盘常态用 `app.ico`，
+测速中自动切换 `app-busy.ico`（绿色徽章 + 双向箭头）。
 
 **MSIX 安装包**：`dotnet build src/LanSpeed.App -c Release` 产出
 `packaging/AppPackages/LanSpeed.App_0.1.0.0_x64_Test/LanSpeed.App_0.1.0.0_x64.msix`（已用自签名测试证书签名）。

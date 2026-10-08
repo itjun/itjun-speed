@@ -286,16 +286,23 @@ flowchart LR
 - **历史**：列表、详情、删除、导出 CSV。
 - **设置**：允许被测、端口、网卡过滤、防火墙自检与修复、开机自启、检查更新。
 
-托盘（H.NotifyIcon.WinUI）：图标区分空闲 / 被测中；菜单含“允许被测”开关、打开主界面、中止当前测速、退出。被测时弹系统通知：“正在被测速”，可从托盘一键中止。
+托盘（H.NotifyIcon.WinUI）：图标区分空闲 / 被测中；菜单含“允许被测”开关、打开主界面、中止当前测速、退出。被测状态由图标与 tooltip 表达，可从托盘中止（气泡通知的实现说明见下方踩坑记录）。
 
-> 实现说明（2026-10-08）：五页与托盘已实现；结果页以“结论等级着色的轮次表”代替 N×N 热力图，吞吐曲线（LiveCharts2）暂未实现，需要时再增强。关闭窗口隐藏到托盘，退出走托盘菜单。
+> 实现说明（2026-10-08）：六页与托盘已实现——主机（打开自动扫描）、两机测试（A、B 从扫描结果选择或手动录入；A 可选本机，A、B 均远程时本机仅作发起机；结果为 1Panel 风格报表：结论徽章 + 蓝/绿大数字卡 + 指标卡 + LiveCharts2 逐秒速率曲线）、分组、结果、历史、设置。吞吐曲线已用 LiveCharts2（LiveChartsCore.SkiaSharpView.WinUI）实现；矩阵 N×N 热力图以「结论等级着色的轮次表」代替。关闭窗口隐藏到托盘，退出走托盘菜单。注意 WinUI 页面事件在 InitializeComponent 中途即可能触发（如 ToggleSwitch 的 IsOn 默认值），处理函数必须做「页面就绪」守卫，否则 async void 中吞掉空引用异常极难排查（已踩坑）。
+
+> 图标与托盘踩坑（2026-10-08，Win10 19044 实测）：
+> 1. **窗口图标**：WinUI 3 桌面窗口类（`WinUIDesktopWin32WindowClass`）注册时不带图标，exe 内嵌图标不会自动成为窗口图标——标题栏、任务栏、Alt-Tab 全部空白。必须在窗口构造时 `AppWindow.SetIcon(<安装目录>\Assets\app.ico)`（csproj 已把 `Assets\*.ico` 作为 Content 复制，打包/未打包路径一致取 `AppContext.BaseDirectory`）。
+> 2. **托盘 IconSource 不可用**：H.NotifyIcon.WinUI 2.4.1 的 `IconSource`（ImageSource）走「ms-appx URI → 文件流 → `new Icon(stream, DPI 尺寸)`」异步链（async void），任一环失败即静默丢图标。改为同步 `System.Drawing.Icon` 直读 ico 文件赋 `Tray.Icon`（`GetSystemMetrics(SM_CXSMICON)` 取尺寸，条目不匹配回退默认条目）。
+> 3. **库注册自带 NIS_HIDDEN**：H.NotifyIcon 的 `TryCreate` 硬编码 `dwState=1(NIS_HIDDEN)`，部分 Win10 explorer 不接受事后 `NIM_MODIFY` 翻回可见。修复：窗口加载后按 GUID `NIM_DELETE` + 无 `NIF_STATE` 的干净参数 `NIM_ADD` 重注册（沿用库消息窗口与 1024 回调、`NIM_SETVERSION(4)`，右键菜单/双-click 不受影响）。
+> 4. **NIM_MODIFY 一律不用**：实测该机器 explorer 对按 GUID 的 `NIM_MODIFY`（换图标、改 tip、`NIF_INFO` 气泡）返回成功但移除图标。因此忙/闲切换与 tooltip 变更一律走「DELETE + 干净 ADD」重注册；被测气泡通知（`Tray.ShowNotification` 底层即 `NIF_INFO`）已移除，「正在被测」由绿徽章图标 + tooltip 表达。
+> 5. 交给 explorer 的 HICON 必须长活：`Tray.Icon` 属性每次变更会 Dispose 旧 `System.Drawing.Icon`（DestroyIcon explorer 正在引用的句柄），故重注册一律用 `LoadImage(LR_LOADFROMFILE)` 的独立句柄。
 
 ## 9. 不鉴权下的安全兜底
 
 - **允许被测**开关默认开启；关闭后控制接口只保留 `hello`（`accept=false`），其余返回 403。
 - 只接受来自私有地址段的请求。
 - 单次时长上限 300 秒、并行流上限 64、同时只允许一个测试。
-- 被测时托盘图标变化并发系统通知，可一键中止。
+- 被测时托盘图标变化（绿徽章）并提示（气泡通知因 §8 踩坑 4 移除，状态由图标与 tooltip 表达），可一键中止。
 - 接口只能启停 iperf3 和 ping，不能执行命令、读写文件。
 - 预留：后续可加“团队口令”HMAC 签名请求头，向后兼容。
 
