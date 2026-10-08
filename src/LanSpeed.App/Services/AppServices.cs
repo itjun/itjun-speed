@@ -58,18 +58,39 @@ public sealed class AppServices
 
     public async Task StartAsync()
     {
+        HostsTrace("AppServices.StartAsync: enter");
+        // 扫描阶段跟踪 → %LOCALAPPDATA%\LanSpeed\ui-debug.log（诊断用）
+        Scanner.Trace = m => HostsTrace(m);
+        HostsTrace("AppServices.StartAsync: before server start");
         await Server.StartAsync(Settings.CtrlPort);
+        HostsTrace("AppServices.StartAsync: server started");
         Discovery.Start();
         await Discovery.AnnounceAsync(force: true);
+        HostsTrace("AppServices.StartAsync: discovery announced");
         NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+    }
+
+    internal static void HostsTrace(string message)
+    {
+        try
+        {
+            File.AppendAllText(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LanSpeed", "ui-debug.log"),
+                message + "\n");
+        }
+        catch (IOException)
+        {
+        }
     }
 
     private void OnNetworkAddressChanged(object? sender, EventArgs e) => _ = Discovery.AnnounceAsync();
 
     public async Task<List<HostEntry>> ScanAsync()
     {
+        HostsTrace("AppServices.ScanAsync: enter");
         var scanner = new Scanner(Discovery);
         LastScan = await scanner.ScanAsync();
+        HostsTrace("AppServices.ScanAsync: done");
         ScanCompleted?.Invoke();
         return LastScan;
     }

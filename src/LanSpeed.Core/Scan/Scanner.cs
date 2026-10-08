@@ -68,10 +68,17 @@ public sealed record HostEntry(
 /// <summary>局域网扫描（§4.2）：发现广播 + ping + ARP + 端口探测 + 主机名，合并为主机表。</summary>
 public sealed class Scanner(DiscoveryService discovery)
 {
+    /// <summary>可选的阶段性跟踪（诊断扫描耗时用），由宿主注入。</summary>
+    public static Action<string>? Trace { get; set; }
+
+    private static void TracePhase(string phase) => Trace?.Invoke($"{DateTime.Now:HH:mm:ss.fff} Scanner.{phase}");
+
     public async Task<List<HostEntry>> ScanAsync(TimeSpan? discoveryWait = null, CancellationToken ct = default)
     {
+        TracePhase("begin");
         // 第一层：UDP 发现已安装节点
         var hellos = await discovery.DiscoverAsync(discoveryWait ?? TimeSpan.FromSeconds(1.5), ct);
+        TracePhase($"discovery done: {hellos.Count} hellos");
         var byIp = new Dictionary<string, (NodeHello Hello, bool PortOk)>();
         foreach (var hello in hellos)
         {
@@ -84,30 +91,42 @@ public sealed class Scanner(DiscoveryService discovery)
 
         // 第二层：网段内 ping + ARP，补齐未安装主机
         var candidates = CandidateIps();
+        TracePhase($"candidates: {candidates.Count}");
         var pingOk = await PingSweepAsync(candidates, ct);
+        TracePhase($"ping done: {pingOk.Count(x => x.Value)} alive");
         var arp = await ArpTable.ReadAsync();
+        TracePhase($"arp done: {arp.Count}");
 
         var entries = new Dictionary<string, HostEntry>();
         foreach (var (ip, helloTuple) in byIp)
         {
             entries[ip] = new HostEntry(ip, arp.GetValueOrDefault(ip), pingOk.GetValueOrDefault(ip), arp.ContainsKey(ip), helloTuple.Hello, helloTuple.PortOk);
         }
-        foreach (var ip in candidates.Where(ip => !entries.ContainsKey(ip)))
+        // 广播丢失的已安装节点靠端口探测补齐（并发探测，上限 32；未安装主机的 1 秒超时不至于拖慢整轮扫描）
+        var alive = candidates.Where(ip => !entries.ContainsKey(ip) && (pingOk.GetValueOrDefault(ip) || arp.ContainsKey(ip))).ToList();
+        using var probeSem = new SemaphoreSlim(32);
+        var probeTasks = alive.Select(async ip =>
         {
-            bool alive = pingOk.GetValueOrDefault(ip) || arp.ContainsKey(ip);
-            NodeHello? hello = null;
-            bool portOk = false;
-            if (alive)
+            await probeSem.WaitAsync(ct);
+            try
             {
-                // 广播丢失的已安装节点靠端口探测补齐
-                hello = await HostEntry.ProbeCtrlAsync(ip, 39301, ct);
-                portOk = hello != null;
+            return (ip, hello: await HostEntry.ProbeCtrlAsync(ip, 39301, ct));
             }
-            entries[ip] = new HostEntry(ip, arp.GetValueOrDefault(ip), pingOk.GetValueOrDefault(ip), arp.ContainsKey(ip), hello, portOk);
+            finally
+            {
+                probeSem.Release();
+            }
+        });
+        foreach (var (ip, hello) in await Task.WhenAll(probeTasks))
+        {
+            entries[ip] = new HostEntry(ip, arp.GetValueOrDefault(ip), pingOk.GetValueOrDefault(ip), arp.ContainsKey(ip), hello, hello != null);
         }
+        TracePhase("probe done");
 
-        // 主机名：反向解析（超时 1.5 秒，失败为空）
+        // 主机名：反向解析是锦上添花，绝不阻塞扫描——单机 800ms、并发 16、总预算 3.5 秒，
+        // 未在预算内完成的主机名保持空（Windows 对大量无反解记录的地址会内部排队，逐个吃满超时）
         await ResolveHostnamesAsync(entries.Values.Where(e => e.PingOk || e.ArpSeen).ToList(), ct);
+        TracePhase("hostnames done");
 
         return entries.Values
             .Where(e => e.Hello != null || e.PingOk || e.ArpSeen)
@@ -176,12 +195,14 @@ public sealed class Scanner(DiscoveryService discovery)
 
     private static async Task ResolveHostnamesAsync(List<HostEntry> entries, CancellationToken ct)
     {
+        using var sem = new SemaphoreSlim(16);
         var tasks = entries.Select(async e =>
         {
+            await sem.WaitAsync(ct);
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(1500);
+                timeout.CancelAfter(800);
                 var host = await Dns.GetHostEntryAsync(e.Ip, timeout.Token);
                 e.Hostname = host.HostName.Split('.')[0];
             }
@@ -189,8 +210,13 @@ public sealed class Scanner(DiscoveryService discovery)
             {
                 // 反向解析失败很常见（未在路由器登记名字），保持空
             }
-        });
-        await Task.WhenAll(tasks);
+            finally
+            {
+                sem.Release();
+            }
+        }).ToList();
+        // 总预算：超时即放弃剩余解析（其后任务自行超时结束，不影响结果）
+        _ = await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(TimeSpan.FromSeconds(3.5), ct));
     }
 
     private static byte[] PrefixToMask(int prefix)

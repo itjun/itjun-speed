@@ -16,41 +16,16 @@
 
         <StackPanel Orientation="Horizontal" Spacing="12">
             <Button x:Name="ScanButton" Content="扫描局域网" Style="{StaticResource AccentButtonStyle}" Click="OnScan" />
+            <ToggleSwitch x:Name="AutoScanToggle" Header="自动扫描" OnContent="开" OffContent="关" IsOn="True"
+                          Toggled="OnAutoScanToggled" MinWidth="120" />
             <ProgressRing x:Name="ScanRing" IsActive="False" Width="24" />
             <TextBlock x:Name="ScanSummary" VerticalAlignment="Center" Foreground="Gray" />
         </StackPanel>
 
-        <!-- 单独测试：不依赖扫描结果，直接对指定 IP 发起单对测速（对端需运行本工具节点） -->
-        <Border Grid.Row="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-            <StackPanel Spacing="8">
-                <TextBlock Text="单独测试（手动输入 IP，用于未扫描到或跨网段的主机）" FontWeight="SemiBold" />
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <TextBox x:Name="ManualIp" Header="目标 IP" PlaceholderText="例如 192.168.210.222" Width="200" />
-                    <NumberBox x:Name="ManualPort" Header="控制端口" Value="39301" Minimum="1024" Maximum="65535"
-                               SpinButtonPlacementMode="Compact" Width="120" />
-                    <ComboBox x:Name="ManualDirection" Header="方向" SelectedIndex="0" Width="110">
-                        <ComboBoxItem Content="正向" Tag="forward" />
-                        <ComboBoxItem Content="反向" Tag="reverse" />
-                        <ComboBoxItem Content="双向" Tag="bidir" />
-                    </ComboBox>
-                    <NumberBox x:Name="ManualDuration" Header="时长（秒）" Value="10" Minimum="3" Maximum="300"
-                               SpinButtonPlacementMode="Compact" Width="110" />
-                    <NumberBox x:Name="ManualParallel" Header="并行流" Value="4" Minimum="1" Maximum="64"
-                               SpinButtonPlacementMode="Compact" Width="90" />
-                    <CheckBox x:Name="ManualUdp" Content="UDP" VerticalAlignment="Bottom" />
-                    <NumberBox x:Name="ManualBandwidth" Header="UDP Mbps" Value="200" Minimum="0"
-                               SpinButtonPlacementMode="Compact" Width="100" />
-                    <Button x:Name="ManualTestButton" Content="开始测速" Style="{StaticResource AccentButtonStyle}"
-                            Click="OnManualTest" VerticalAlignment="Bottom" Margin="0,0,0,1" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
+        <TextBlock x:Name="EmptyHint" Grid.Row="1" Foreground="Gray" TextWrapping="Wrap"
+                   Text="尚未扫描：打开本页会自动扫描；也可点击「扫描局域网」。要测任意两台机器（含跨网段手动录入），请到「两机测试」页。" />
 
-        <TextBlock x:Name="EmptyHint" Grid.Row="2" Foreground="Gray" TextWrapping="Wrap"
-                   Text="尚未扫描：点击上方「扫描局域网」列出在线主机；或直接在「单独测试」里输入 IP 测速（对端需运行本工具，CLI 用 serve 命令）。" />
-
-        <Grid Grid.Row="3" ColumnSpacing="12" Padding="12,8">
+        <Grid Grid.Row="2" ColumnSpacing="12" Padding="12,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="150" />
                 <ColumnDefinition Width="130" />
@@ -69,7 +44,7 @@
             <TextBlock Grid.Column="6" Text="操作" FontWeight="SemiBold" />
         </Grid>
 
-        <ListView Grid.Row="4" x:Name="HostList" SelectionMode="None">
+        <ListView Grid.Row="3" x:Name="HostList" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:HostRow">
                     <Grid ColumnSpacing="12">
