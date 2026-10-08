@@ -3,7 +3,9 @@ using LanSpeed.Core.Control;
 using LanSpeed.Core.Discovery;
 using LanSpeed.Core.History;
 using LanSpeed.Core.Iperf;
+using LanSpeed.Core.Net;
 using LanSpeed.Core.Orchestration;
+using LanSpeed.Core.Persistence;
 using LanSpeed.Core.Runner;
 using LanSpeed.Core.Scan;
 
@@ -11,7 +13,7 @@ namespace LanSpeed.App.Services;
 
 /// <summary>
 /// App 内嵌节点服务（§3）：控制接口 + 发现应答与界面同进程常驻；
-/// 界面页直接复用 Core 的扫描 / 分组 / 历史能力。
+/// 界面页直接复用 Core 的扫描 / 分组 / 历史 / 软配对能力。
 /// </summary>
 public sealed class AppServices
 {
@@ -23,6 +25,9 @@ public sealed class AppServices
     private AppServices()
     {
         Settings = AppSettings.Load();
+        Db = new AppDb();
+        PairedHosts = new PairedHostStore(Db);
+        History = new HistoryStore(Db);
         Runner = new IperfRunner();
         Node = new LocalNode(Settings.CtrlPort) { Accept = Settings.AllowBeingTested };
         Ops = new NodeOps(Runner, Node);
@@ -31,6 +36,12 @@ public sealed class AppServices
     }
 
     public AppSettings Settings { get; }
+
+    public AppDb Db { get; }
+
+    public PairedHostStore PairedHosts { get; }
+
+    public HistoryStore History { get; }
 
     public IperfRunner Runner { get; }
 
@@ -41,8 +52,6 @@ public sealed class AppServices
     public ControlServer Server { get; }
 
     public DiscoveryService Discovery { get; }
-
-    public HistoryStore History { get; } = new();
 
     /// <summary>最近一次扫描结果（分组页选成员用）。</summary>
     public List<HostEntry> LastScan { get; private set; } = [];
@@ -59,7 +68,6 @@ public sealed class AppServices
     public async Task StartAsync()
     {
         HostsTrace("AppServices.StartAsync: enter");
-        // 扫描阶段跟踪 → %LOCALAPPDATA%\LanSpeed\ui-debug.log（诊断用）
         Scanner.Trace = m => HostsTrace(m);
         HostsTrace("AppServices.StartAsync: before server start");
         await Server.StartAsync(Settings.CtrlPort);
@@ -90,10 +98,61 @@ public sealed class AppServices
         HostsTrace("AppServices.ScanAsync: enter");
         var scanner = new Scanner(Discovery);
         LastScan = await scanner.ScanAsync();
+        RefreshPairedFromScan(LastScan);
         HostsTrace("AppServices.ScanAsync: done");
         ScanCompleted?.Invoke();
         return LastScan;
     }
+
+    /// <summary>扫描见到已配对主机时刷新 IP / 链路；并返回按节点 ID 索引的配对表。</summary>
+    public void RefreshPairedFromScan(IEnumerable<HostEntry> hosts)
+    {
+        foreach (var h in hosts)
+        {
+            if (h.Hello is null)
+            {
+                continue;
+            }
+            long link = h.Hello.Ips.Count > 0 ? h.Hello.Ips.Max(a => a.SpeedMbps) : 0;
+            // 用该 IP 对应网卡速率；若多地址取最小正值更保守地标排查
+            var speeds = h.Hello.Ips.Where(a => a.SpeedMbps > 0).Select(a => a.SpeedMbps).ToList();
+            if (speeds.Count > 0)
+            {
+                link = speeds.Min();
+            }
+            PairedHosts.TouchSeen(
+                h.Hello.Id,
+                h.Hello.Name,
+                h.Hello.CtrlPort != 0 ? h.Hello.CtrlPort : 39301,
+                h.Hello.Ips.Select(a => a.Ip),
+                link);
+        }
+    }
+
+    public static long HostLinkMbps(HostEntry h)
+    {
+        if (h.Hello?.Ips is { Count: > 0 } ips)
+        {
+            var speeds = ips.Where(a => a.Ip == h.Ip || a.SpeedMbps > 0).Select(a => a.SpeedMbps).Where(s => s > 0).ToList();
+            if (speeds.Count == 0)
+            {
+                speeds = ips.Select(a => a.SpeedMbps).Where(s => s > 0).ToList();
+            }
+            if (speeds.Count > 0)
+            {
+                // 优先取本 IP 对应地址的速率
+                var match = ips.FirstOrDefault(a => a.Ip == h.Ip);
+                if (match is { SpeedMbps: > 0 })
+                {
+                    return match.SpeedMbps;
+                }
+                return speeds.Min();
+            }
+        }
+        return 0;
+    }
+
+    public static LinkClass HostLinkClass(HostEntry h) => LinkHealth.Classify(HostLinkMbps(h));
 
     public void SetGroupResult(GroupResult result, Params p)
     {
@@ -108,5 +167,6 @@ public sealed class AppServices
         Runner.Dispose();
         Discovery.Dispose();
         await Server.DisposeAsync();
+        Db.Dispose();
     }
 }

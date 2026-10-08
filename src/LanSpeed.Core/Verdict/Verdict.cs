@@ -1,4 +1,5 @@
 using LanSpeed.Core.Iperf;
+using LanSpeed.Core.Net;
 
 namespace LanSpeed.Core.Verdict;
 
@@ -148,7 +149,14 @@ public static class VerdictEvaluator
             notes.Add("可能被 CPU 拖慢");
         }
 
-        // 9. 慢时的建议
+        // 9. 链路健康：低于千兆 / 未知——排查提示（不改定级）
+        string? linkHint = LinkHealth.InvestigationHint(linkMbps);
+        if (linkHint != null)
+        {
+            notes.Add(linkHint);
+        }
+
+        // 10. 慢时的建议
         if (grade is Grade.Fair or Grade.Poor)
         {
             if (protocol == "tcp" && p.Parallel < 4)
@@ -159,13 +167,13 @@ public static class VerdictEvaluator
             {
                 notes.Add("链路速率未知，建议插网线后再测");
             }
-            else
+            else if (!LinkHealth.IsInvestigationTarget(linkMbps))
             {
                 notes.Add("建议检查网线（超五类及以上）、交换机端口、网卡协商速率");
             }
         }
 
-        // 10. 标题
+        // 11. 标题
         double mbps = slow / 1e6;
         double mbPerSec = mbps / 8;
         double minutes = 10 * 1024 / mbPerSec / 60;

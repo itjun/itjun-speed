@@ -18,52 +18,71 @@
             <Button x:Name="ScanButton" Content="扫描局域网" Style="{StaticResource AccentButtonStyle}" Click="OnScan" />
             <ToggleSwitch x:Name="AutoScanToggle" Header="自动扫描" OnContent="开" OffContent="关" IsOn="True"
                           Toggled="OnAutoScanToggled" MinWidth="120" />
+            <CheckBox x:Name="ProblemsOnlyCheck" Content="仅问题主机（低于千兆）" VerticalAlignment="Bottom"
+                      Checked="OnFilterChanged" Unchecked="OnFilterChanged" />
             <ProgressRing x:Name="ScanRing" IsActive="False" Width="24" />
-            <TextBlock x:Name="ScanSummary" VerticalAlignment="Center" Foreground="Gray" />
+            <TextBlock x:Name="ScanSummary" VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         </StackPanel>
 
-        <TextBlock x:Name="EmptyHint" Grid.Row="1" Foreground="Gray" TextWrapping="Wrap"
-                   Text="尚未扫描：打开本页会自动扫描；也可点击「扫描局域网」。要测任意两台机器（含跨网段手动录入），请到「两机测试」页。" />
+        <InfoBar x:Name="LinkTipBar" Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Title="链路健康"
+                 Message="内网应以千兆为常态。协商低于千兆的主机会醒目标记为排查重点（网线 / 交换机口 / 驱动），仍可正常测速。" />
 
-        <Grid Grid.Row="2" ColumnSpacing="12" Padding="12,8">
+        <TextBlock x:Name="EmptyHint" Grid.Row="2"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="尚未扫描：打开本页会自动扫描；也可点击「扫描局域网」。已配对主机会置顶；要测任意两台请到「两机测试」页。" />
+
+        <Grid Grid.Row="3" ColumnSpacing="12" Padding="12,8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="130" />
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="150" />
                 <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="100" />
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="120" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="状态" FontWeight="SemiBold" />
             <TextBlock Grid.Column="1" Text="IP" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="2" Text="主机名" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="3" Text="MAC" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="2" Text="链路" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="3" Text="主机名" FontWeight="SemiBold" />
             <TextBlock Grid.Column="4" Text="节点名" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="5" Text="版本" FontWeight="SemiBold" />
-            <TextBlock Grid.Column="6" Text="操作" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="5" Text="配对" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="6" Text="版本" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="7" Text="操作" FontWeight="SemiBold" />
         </Grid>
 
-        <ListView Grid.Row="3" x:Name="HostList" SelectionMode="None">
+        <ListView Grid.Row="4" x:Name="HostList" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:HostRow">
-                    <Grid ColumnSpacing="12">
+                    <Grid ColumnSpacing="12" Background="{x:Bind RowBrush}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="150" />
                             <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="120" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{x:Bind Status}" Foreground="{x:Bind StatusBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <TextBlock Grid.Column="1" Text="{x:Bind Ip}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind Hostname}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="3" Text="{x:Bind Mac}" VerticalAlignment="Center" FontFamily="Consolas" FontSize="12" />
+                        <Border Grid.Column="2" Background="{x:Bind LinkBadgeBrush}" CornerRadius="4" Padding="8,2" VerticalAlignment="Center" HorizontalAlignment="Left">
+                            <TextBlock Text="{x:Bind LinkLabel}" FontSize="11" Foreground="White" />
+                        </Border>
+                        <TextBlock Grid.Column="3" Text="{x:Bind Hostname}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         <TextBlock Grid.Column="4" Text="{x:Bind NodeName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="5" Text="{x:Bind Version}" VerticalAlignment="Center" />
-                        <Button Grid.Column="6" Content="测速" Visibility="{x:Bind TestableVisibility}" Tag="{x:Bind Ip}" Click="OnQuickTest" />
+                        <TextBlock Grid.Column="5" Text="{x:Bind PairLabel}" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Grid.Column="6" Text="{x:Bind Version}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6">
+                            <Button Content="{x:Bind PairButtonText}" Tag="{x:Bind}" Click="OnTogglePair"
+                                    Visibility="{x:Bind PairVisibility}" />
+                            <Button Content="测速" Visibility="{x:Bind TestableVisibility}" Tag="{x:Bind Ip}" Click="OnQuickTest" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

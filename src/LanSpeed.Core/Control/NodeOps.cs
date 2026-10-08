@@ -38,7 +38,7 @@ public sealed class NodeOps(IIperfRunner runner, ILocalNode node)
         var p = req.Params;
         p.Normalize();
         var flow = Flow.New(req.Flow.ServerSide, req.Flow.Direction);
-        return ClientArgs.Build(req.Target, req.Port, p, flow, req.BindIp, Runner.IperfLocator.Current.SupportsJsonStream);
+        return ClientArgs.Build(req.Target, req.Port, p, flow, req.BindIp);
     }
 
     public IAsyncEnumerable<string> ClientRunAsync(ClientRunRequest req, CancellationToken ct = default) =>

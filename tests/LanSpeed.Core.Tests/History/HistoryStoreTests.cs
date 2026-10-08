@@ -4,7 +4,7 @@ namespace LanSpeed.Core.Tests.History;
 
 public class HistoryStoreTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"lanspeed-history-test-{Guid.NewGuid():N}.json");
+    private readonly string _path = Path.Combine(Path.GetTempPath(), $"lanspeed-history-test-{Guid.NewGuid():N}.db");
 
     [Fact]
     public void AppendLoad_RoundTrips()
@@ -23,16 +23,16 @@ public class HistoryStoreTests : IDisposable
     }
 
     [Fact]
-    public void Cap200()
+    public void Cap100()
     {
         var store = new HistoryStore(_path);
-        for (int i = 0; i < 210; i++)
+        for (int i = 0; i < 110; i++)
         {
-            store.Append(new HistoryRecord($"id{i}", DateTimeOffset.Now, "single", "tcp", 10, 4, "forward",
+            store.Append(new HistoryRecord($"id{i}", DateTimeOffset.UtcNow.AddSeconds(i), "single", "tcp", 10, 4, "forward",
                 [new HistoryPair("a", "b", "done", 1, 0, 0, 0, 0, 0, "", "")]));
         }
-        Assert.Equal(200, store.Load().Count);
-        Assert.Equal("id209", store.Load()[0].Id);
+        Assert.Equal(HistoryStore.MaxRecords, store.Load().Count);
+        Assert.Equal("id109", store.Load()[0].Id);
     }
 
     [Fact]
@@ -60,7 +60,8 @@ public class HistoryStoreTests : IDisposable
     {
         TryDelete(_path);
         TryDelete(Path.ChangeExtension(_path, ".csv"));
-        TryDelete(_path + ".tmp");
+        TryDelete(_path + "-shm");
+        TryDelete(_path + "-wal");
     }
 
     private static void TryDelete(string path)

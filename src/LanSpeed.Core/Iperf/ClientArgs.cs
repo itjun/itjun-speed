@@ -10,8 +10,7 @@ public static class ClientArgs
     /// <param name="p">已 Normalize 的测速参数。</param>
     /// <param name="f">方向映射。</param>
     /// <param name="bindIp">本机绑定地址（多网卡时保证走对网卡），null 时不绑定。</param>
-    /// <param name="jsonStream">iperf3 支持 --json-stream 时用流式输出；否则回退 -J 经典输出（由 ClassicConverter 转换）。</param>
-    public static IReadOnlyList<string> Build(string target, int port, Params p, Flow f, string? bindIp = null, bool jsonStream = true)
+    public static IReadOnlyList<string> Build(string target, int port, Params p, Flow f, string? bindIp = null)
     {
         var inv = CultureInfo.InvariantCulture;
         var args = new List<string>
@@ -22,8 +21,8 @@ public static class ClientArgs
             "-P", p.Parallel.ToString(inv),
             "-i", p.Interval.ToString(inv),
             "--connect-timeout", "3000",
+            "--json-stream", "--forceflush",
         };
-        args.AddRange(jsonStream ? ["--json-stream", "--forceflush"] : ["-J"]);
         if (p.Omit > 0)
         {
             args.Add("-O");

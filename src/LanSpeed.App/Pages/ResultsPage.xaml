@@ -17,6 +17,12 @@
             <Button x:Name="ExportButton" Content="导出 CSV" Click="OnExportCsv" Visibility="Collapsed" />
         </StackPanel>
 
+        <!-- 矩阵热力（仅矩阵模式显示） -->
+        <ScrollViewer x:Name="MatrixScroll" Grid.Row="1" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto"
+                      Visibility="Collapsed" MaxHeight="420">
+            <StackPanel x:Name="MatrixPanel" Spacing="4" Padding="0,8" />
+        </ScrollViewer>
+
         <ListView Grid.Row="2" x:Name="ResultList" SelectionMode="None">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:ResultRow">
@@ -29,7 +35,8 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{x:Bind PairText}" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{x:Bind SpeedText}" VerticalAlignment="Center" FontFamily="Consolas" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind Note}" VerticalAlignment="Center" Foreground="Gray" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind Note}" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                         <Border Grid.Column="3" Background="{x:Bind GradeBrush}" CornerRadius="3" Padding="10,2" HorizontalAlignment="Left">
                             <TextBlock Text="{x:Bind GradeText}" FontSize="12" Foreground="White" />
                         </Border>

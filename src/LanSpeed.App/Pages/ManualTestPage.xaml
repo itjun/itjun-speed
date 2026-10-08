@@ -37,18 +37,21 @@
                     <TextBlock Text="两机测试（A 作客户端、B 作服务端；测速流量只在 A、B 之间）" FontWeight="SemiBold" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <ComboBox x:Name="HostACombo" Header="A 机" IsEditable="True" Width="280"
-                                  PlaceholderText="选择或输入 IP" SelectionChanged="OnHostASelectionChanged" />
+                                  PlaceholderText="选择或输入 IP" SelectionChanged="OnHostSelectionChanged" />
                         <NumberBox x:Name="HostAPort" Header="A 控制端口" Value="39301" Minimum="1024" Maximum="65535"
                                    SpinButtonPlacementMode="Compact" Width="130" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <ComboBox x:Name="HostBCombo" Header="B 机" IsEditable="True" Width="280"
-                                  PlaceholderText="选择或输入 IP" />
+                                  PlaceholderText="选择或输入 IP" SelectionChanged="OnHostSelectionChanged" />
                         <NumberBox x:Name="HostBPort" Header="B 控制端口" Value="39301" Minimum="1024" Maximum="65535"
                                    SpinButtonPlacementMode="Compact" Width="130" />
                     </StackPanel>
-                    <TextBlock x:Name="HostHint" Foreground="Gray" FontSize="12" TextWrapping="Wrap"
-                               Text="下拉列出最近扫描到的已安装主机（含本机），也可以直接输入任意 IP。A 选「本机」时由本机打流；A、B 都选远程主机时本机仅作为发起机调度。" />
+                    <TextBlock x:Name="HostHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap"
+                               Text="下拉列出最近扫描与已配对主机（含本机），也可以直接输入任意 IP。A 选「本机」时由本机打流；A、B 都选远程主机时本机仅作为发起机调度。" />
+                    <InfoBar x:Name="LinkWarnBar" IsOpen="False" Severity="Warning" IsClosable="False"
+                             Title="疑似百兆链路"
+                             Message="所选主机协商低于千兆，应排查网线、交换机口与驱动；仍可开始测速以佐证问题。" />
                 </StackPanel>
             </Border>
 

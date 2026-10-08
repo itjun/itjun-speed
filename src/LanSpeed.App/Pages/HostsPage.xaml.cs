@@ -2,15 +2,18 @@ using System.Collections.ObjectModel;
 using LanSpeed.App.Services;
 using LanSpeed.Core.Control;
 using LanSpeed.Core.Iperf;
+using LanSpeed.Core.Net;
 using LanSpeed.Core.Orchestration;
+using LanSpeed.Core.Scan;
 using LanSpeed.Core.Verdict;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
 namespace LanSpeed.App.Pages;
 
-/// <summary>主机行视图模型。</summary>
+/// <summary>主机行视图模型（含链路健康与软配对状态）。</summary>
 public sealed class HostRow
 {
     public required string Status { get; init; }
@@ -23,27 +26,56 @@ public sealed class HostRow
 
     public string? HostnameValue { get; init; }
 
-    public string Mac => MacValue is { Length: > 0 } m ? m : "—";
-
-    public string? MacValue { get; init; }
-
     public string NodeName => Hello is { } h ? h.Name : "—";
 
     public string Version => Hello is { } h ? $"{h.Version} / iperf {h.Iperf}" : "—";
 
-    public Core.Scan.HostEntry? Entry { get; init; }
+    public HostEntry? Entry { get; init; }
 
     public NodeHello? Hello => Entry?.Hello;
+
+    public long LinkMbps { get; init; }
+
+    public LinkClass LinkClass { get; init; }
+
+    public string LinkLabel => LinkClass switch
+    {
+        LinkClass.BelowGigabit => LinkMbps > 0 ? $"{LinkMbps}M" : "低于千兆",
+        LinkClass.Unknown => "未知",
+        _ => LinkMbps >= 1000 ? $"{LinkMbps}M" : "千兆+",
+    };
+
+    public Brush LinkBadgeBrush => LinkClass switch
+    {
+        LinkClass.BelowGigabit => new SolidColorBrush(Colors.OrangeRed),
+        LinkClass.Unknown => new SolidColorBrush(Colors.Gray),
+        _ => new SolidColorBrush(Colors.SeaGreen),
+    };
+
+    public Brush RowBrush => LinkClass == LinkClass.BelowGigabit
+        ? new SolidColorBrush(Windows.UI.Color.FromArgb(40, 255, 140, 0))
+        : new SolidColorBrush(Colors.Transparent);
+
+    public bool IsInvestigation => LinkHealth.IsInvestigationTarget(LinkClass);
+
+    public bool Remembered { get; set; }
+
+    public string PairLabel => Remembered ? "已配对" : (Hello is null ? "—" : "未配对");
+
+    public string PairButtonText => Remembered ? "取消记住" : "记住";
+
+    public Visibility PairVisibility => Hello is null ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility TestableVisibility => Entry?.Hello is { Accept: true } && Entry.PortOk
         ? Visibility.Visible
         : Visibility.Collapsed;
 }
 
-/// <summary>主机页（§8）：自动扫描、主机表、对已安装主机快速测速（本机 → 该机）。</summary>
+/// <summary>主机页：扫描、软配对、低于千兆排查标记（不拦截开测）。</summary>
 public sealed partial class HostsPage : Page
 {
     private readonly ObservableCollection<HostRow> _rows = [];
+    private List<HostRow> _allRows = [];
     private static DateTime _lastAutoScan = DateTime.MinValue;
     private bool _pageReady;
 
@@ -55,9 +87,11 @@ public sealed partial class HostsPage : Page
         {
             FillRows(AppServices.Current.LastScan);
         }
+        else
+        {
+            FillPairedOffline();
+        }
         UpdateEmptyHint();
-        // Loaded 在全部控件创建完成后触发，此后才允许扫描（XAML 里 IsOn/IsChecked 默认值会在
-        // InitializeComponent 中途触发 Toggled 事件，此时后声明的控件字段还是 null）
         Loaded += (_, _) =>
         {
             _pageReady = true;
@@ -65,10 +99,8 @@ public sealed partial class HostsPage : Page
         };
     }
 
-    /// <summary>打开本页自动扫描一次（10 秒内不重复，避免频繁导航反复扫）。</summary>
     private void MaybeAutoScan()
     {
-        DebugLog($"MaybeAutoScan: toggleNull={AutoScanToggle is null} isOn={AutoScanToggle?.IsOn} sinceLast={(DateTime.UtcNow - _lastAutoScan).TotalSeconds:F0}s");
         if (AutoScanToggle is { IsOn: true } && (DateTime.UtcNow - _lastAutoScan).TotalSeconds > 10)
         {
             _lastAutoScan = DateTime.UtcNow;
@@ -80,9 +112,8 @@ public sealed partial class HostsPage : Page
     {
         if (!_pageReady)
         {
-            return; // InitializeComponent 期间 IsOn=True 触发的事件，忽略
+            return;
         }
-        DebugLog($"OnAutoScanToggled: isOn={AutoScanToggle.IsOn}");
         if (AutoScanToggle.IsOn && (DateTime.UtcNow - _lastAutoScan).TotalSeconds > 10)
         {
             _lastAutoScan = DateTime.UtcNow;
@@ -90,17 +121,13 @@ public sealed partial class HostsPage : Page
         }
     }
 
-    private static void DebugLog(string message)
+    private void OnFilterChanged(object sender, RoutedEventArgs e)
     {
-        try
+        if (!_pageReady)
         {
-            File.AppendAllText(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LanSpeed", "ui-debug.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} {message}\n");
+            return;
         }
-        catch (IOException)
-        {
-        }
+        ApplyFilter();
     }
 
     private async void OnScan(object sender, RoutedEventArgs e) => await RunScanAsync();
@@ -109,9 +136,8 @@ public sealed partial class HostsPage : Page
     {
         if (ScanButton is null || ScanRing is null || ScanSummary is null)
         {
-            return; // 页面尚未初始化完成
+            return;
         }
-        DebugLog("RunScanAsync: start");
         ScanButton.IsEnabled = false;
         ScanRing.IsActive = true;
         ScanSummary.Text = "正在扫描（发现 + ping / ARP / 端口探测）…";
@@ -120,13 +146,12 @@ public sealed partial class HostsPage : Page
             var hosts = await AppServices.Current.ScanAsync();
             FillRows(hosts);
             int installed = hosts.Count(h => h.Hello != null);
-            ScanSummary.Text = $"共 {hosts.Count} 台在线，其中 {installed} 台已安装本工具";
-            DebugLog($"RunScanAsync: done {hosts.Count} hosts, {installed} installed");
+            int problems = _allRows.Count(r => r.IsInvestigation);
+            ScanSummary.Text = $"共 {hosts.Count} 台在线，{installed} 台已安装；其中 {problems} 台低于千兆（排查重点）";
         }
         catch (Exception ex)
         {
             ScanSummary.Text = $"扫描失败：{ex.Message}";
-            DebugLog($"RunScanAsync: failed {ex}");
         }
         finally
         {
@@ -135,20 +160,66 @@ public sealed partial class HostsPage : Page
         }
     }
 
-    private void FillRows(IEnumerable<Core.Scan.HostEntry> hosts)
+    private void FillPairedOffline()
     {
-        _rows.Clear();
+        // 重启后尚无扫描：先展示已配对主机（离线灰显）
+        var paired = AppServices.Current.PairedHosts.List();
+        if (paired.Count == 0)
+        {
+            return;
+        }
+        _allRows = paired.Select(p => new HostRow
+        {
+            Status = "已配对·离线",
+            StatusBrush = new SolidColorBrush(Colors.Gray),
+            Ip = p.LastIps.FirstOrDefault() ?? "—",
+            HostnameValue = p.Name,
+            LinkMbps = p.LinkMbps,
+            LinkClass = LinkHealth.Classify(p.LinkMbps),
+            Remembered = true,
+            Entry = null,
+        }).ToList();
+        ApplyFilter();
+    }
+
+    private void FillRows(IEnumerable<HostEntry> hosts)
+    {
+        var pairedIds = AppServices.Current.PairedHosts.List().Select(p => p.NodeId).ToHashSet();
+        var list = new List<HostRow>();
         foreach (var h in hosts)
         {
-            _rows.Add(new HostRow
+            long link = AppServices.HostLinkMbps(h);
+            var cls = LinkHealth.Classify(link);
+            bool remembered = h.Hello != null && pairedIds.Contains(h.Hello.Id);
+            list.Add(new HostRow
             {
                 Status = h.Status,
                 StatusBrush = StatusColor(h.Status),
                 Ip = h.Ip,
                 HostnameValue = h.Hostname,
-                MacValue = h.Mac,
                 Entry = h,
+                LinkMbps = link,
+                LinkClass = cls,
+                Remembered = remembered,
             });
+        }
+        // 已配对置顶，其次排查对象，再按状态
+        _allRows = list
+            .OrderByDescending(r => r.Remembered)
+            .ThenByDescending(r => r.IsInvestigation)
+            .ThenBy(r => r.Status)
+            .ThenBy(r => r.Ip)
+            .ToList();
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        _rows.Clear();
+        bool onlyProblems = ProblemsOnlyCheck is { IsChecked: true };
+        foreach (var r in _allRows.Where(r => !onlyProblems || r.IsInvestigation))
+        {
+            _rows.Add(r);
         }
         UpdateEmptyHint();
     }
@@ -159,11 +230,57 @@ public sealed partial class HostsPage : Page
 
     private static Brush StatusColor(string status) => status switch
     {
-        "已安装·可测" => new SolidColorBrush(Microsoft.UI.Colors.Green),
-        "已安装·拒绝被测" or "已安装·忙" => new SolidColorBrush(Microsoft.UI.Colors.DarkOrange),
-        "已安装·控制端口不通" => new SolidColorBrush(Microsoft.UI.Colors.Red),
-        _ => new SolidColorBrush(Microsoft.UI.Colors.Gray),
+        "已安装·可测" => new SolidColorBrush(Colors.Green),
+        "已安装·拒绝被测" or "已安装·忙" => new SolidColorBrush(Colors.DarkOrange),
+        "已安装·控制端口不通" => new SolidColorBrush(Colors.Red),
+        _ => new SolidColorBrush(Colors.Gray),
     };
+
+    private void OnTogglePair(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: HostRow row } || row.Hello is null)
+        {
+            return;
+        }
+        var store = AppServices.Current.PairedHosts;
+        bool next = !row.Remembered;
+        if (next)
+        {
+            store.Remember(
+                row.Hello.Id,
+                row.Hello.Name,
+                row.Hello.CtrlPort != 0 ? row.Hello.CtrlPort : 39301,
+                row.Hello.Ips.Select(a => a.Ip),
+                row.LinkMbps);
+        }
+        else
+        {
+            store.Forget(row.Hello.Id);
+        }
+        // 重建行（x:Bind 默认 OneTime，需新实例才能刷新配对文案）
+        int idx = _allRows.IndexOf(row);
+        if (idx >= 0 && row.Entry != null)
+        {
+            _allRows[idx] = new HostRow
+            {
+                Status = row.Status,
+                StatusBrush = row.StatusBrush,
+                Ip = row.Ip,
+                HostnameValue = row.HostnameValue,
+                Entry = row.Entry,
+                LinkMbps = row.LinkMbps,
+                LinkClass = row.LinkClass,
+                Remembered = next,
+            };
+        }
+        _allRows = _allRows
+            .OrderByDescending(r => r.Remembered)
+            .ThenByDescending(r => r.IsInvestigation)
+            .ThenBy(r => r.Status)
+            .ThenBy(r => r.Ip)
+            .ToList();
+        ApplyFilter();
+    }
 
     private async void OnQuickTest(object sender, RoutedEventArgs e)
     {
@@ -197,12 +314,8 @@ public sealed partial class HostsPage : Page
                 bool abLive = p.Direction is Directions.Forward or Directions.Bidir;
                 bool baLive = p.Direction is Directions.Reverse or Directions.Bidir;
                 title = $"与 {ip} 的测速结果";
-                text = $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Duration}s × {p.Parallel} 流，方向 {(p.Direction == Directions.Reverse ? "反向" : p.Direction == Directions.Bidir ? "双向" : "正向")}\n\n"
-                     + $"A→B（本机→对端）{(abLive ? $"{s.AB / 1e6:F1} Mbps" : "—（单向无流量）")}（峰值 {(abLive ? $"{s.PeakAB / 1e6:F1}" : "—")}）\n"
-                     + $"B→A（对端→本机）{(baLive ? $"{s.BA / 1e6:F1} Mbps" : "—（单向无流量）")}（峰值 {(baLive ? $"{s.PeakBA / 1e6:F1}" : "—")}）\n"
-                     + $"重传 {s.Retransmits} 次 │ RTT {(s.RTTMs > 0 ? $"{s.RTTMs:F1} ms" : "—")}"
-                     + (s.JitterMs > 0 ? $" │ 抖动 {s.JitterMs:F2} ms" : string.Empty)
-                     + (s.LostPct > 0 ? $" │ 丢包 {s.LostPct:F2}%" : string.Empty) + "\n\n"
+                text = $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Duration}s × {p.Parallel} 流\n\n"
+                     + $"A→B {(abLive ? $"{s.AB / 1e6:F1} Mbps" : "—")} │ B→A {(baLive ? $"{s.BA / 1e6:F1} Mbps" : "—")}\n"
                      + $"结论：{v.GradeLabel} —— {v.Title}";
                 foreach (var note in v.Notes)
                 {
@@ -212,13 +325,13 @@ public sealed partial class HostsPage : Page
             else
             {
                 title = "测速失败";
-                text = $"状态：{result.Status}\n原因：{result.Reason}\n\n请确认对端已运行本工具（CLI：serve 命令；默认端口 {ctrlPort}），且防火墙已放行。";
+                text = $"状态：{result.Status}\n原因：{result.Reason}";
             }
             await ShowDialogAsync(title, text);
         }
         catch (Exception ex)
         {
-            await ShowDialogAsync("测速失败", $"{ex.Message}\n\n请确认对端已运行本工具节点（CLI：serve 命令）。");
+            await ShowDialogAsync("测速失败", ex.Message);
         }
         finally
         {

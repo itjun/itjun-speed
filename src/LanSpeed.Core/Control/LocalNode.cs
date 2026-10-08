@@ -40,7 +40,7 @@ public sealed class LocalNode : ILocalNode
 
     public string Version { get; }
 
-    // Windows 内置 3.22；Linux 为系统 iperf3 版本（未安装显示提示）
+    // 内置 iperf3 3.22 版本（未就绪时显示提示）
     public string IperfVersion => Runner.IperfLocator.TryVersion();
 
     public int CtrlPort { get; }
@@ -72,7 +72,7 @@ public sealed class LocalNode : ILocalNode
                 long speedMbps = nic.Speed / 1_000_000;
                 if (speedMbps < 0 || speedMbps > 100_000)
                 {
-                    speedMbps = 0; // Linux 上未知速率返回 -1 或垃圾值
+                    speedMbps = 0; // 未知或异常协商速率
                 }
                 list.Add(new NodeAddrDto(
                     addr.Address.ToString(),

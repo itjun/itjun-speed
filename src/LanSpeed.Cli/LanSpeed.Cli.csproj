@@ -2,9 +2,10 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <AssemblyName>LanSpeed.Cli</AssemblyName>
-    <!-- Windows 与 Linux 节点共用本 CLI；iperf3 在 Windows 用内置资源、Linux 用系统安装 -->
+    <!-- 仅 Windows 调试节点；iperf3 用内置资源 -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,7 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- iperf3 资源随 CLI 输出目录分发，运行时按 SHA256 校验后落盘 %LOCALAPPDATA%（仅 Windows 使用） -->
     <Content Include="..\..\assets\iperf3\win64\**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets\iperf3\win64" />
   </ItemGroup>
 

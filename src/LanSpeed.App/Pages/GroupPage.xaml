@@ -39,11 +39,17 @@
             </StackPanel>
 
             <!-- 成员列表 + 开始 -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
-                <Button x:Name="StartButton" Content="开始分组测速" Style="{StaticResource AccentButtonStyle}" Click="OnStart" />
-                <Button x:Name="StopButton" Content="停止" Click="OnStop" IsEnabled="False" />
-                <ProgressRing x:Name="RunRing" IsActive="False" Width="24" />
-                <TextBlock x:Name="RunSummary" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" />
+            <StackPanel Grid.Row="1" Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button x:Name="StartButton" Content="开始分组测速" Style="{StaticResource AccentButtonStyle}" Click="OnStart" />
+                    <Button x:Name="StopButton" Content="停止" Click="OnStop" IsEnabled="False" />
+                    <ProgressRing x:Name="RunRing" IsActive="False" Width="24" />
+                    <TextBlock x:Name="RunSummary" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+                <InfoBar x:Name="LinkWarnBar" IsOpen="False" Severity="Warning" IsClosable="False"
+                         Title="分组含低于千兆主机"
+                         Message="已勾选主机中存在协商低于千兆的链路，应作为排查重点；仍可开始测速。" />
             </StackPanel>
 
             <StackPanel Grid.Row="2" x:Name="MembersPanel" Spacing="4" />

@@ -1,13 +1,13 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
+using System.Text; // Encoding
 
 namespace LanSpeed.Core.Runner;
 
 /// <summary>
 /// iperf3 子进程管理（§6.1）：服务端端口自动选择、客户端流式输出、硬性存活上限。
-/// 跨平台：Windows 用内置资源（Job Object + 防睡眠），Linux/macOS 用系统 iperf3。
+/// 仅 Windows：内置资源 + Job Object + 防睡眠；固定 --json-stream。
 /// </summary>
 public sealed class IperfRunner : IIperfRunner
 {
@@ -145,36 +145,12 @@ public sealed class IperfRunner : IIperfRunner
             sleep = PreventSleep();
             // stderr 单独排空，避免管道写满导致卡死；错误信息以 stdout 的 error 事件为准
             _ = proc.StandardError.ReadToEndAsync();
-            // 旧版 iperf3（无 --json-stream）只能整体输出 -J JSON，结束后转换为事件行（ClassicConverter）
-            bool jsonStream = IperfLocator.Current.SupportsJsonStream;
-            var classic = jsonStream ? null : new StringBuilder();
             var stdout = proc.StandardOutput;
             while (await stdout.ReadLineAsync(ct) is { } line)
             {
-                if (jsonStream)
-                {
-                    yield return line;
-                }
-                else
-                {
-                    classic!.AppendLine(line);
-                }
+                yield return line;
             }
             await proc.WaitForExitAsync(ct);
-            if (classic != null)
-            {
-                bool any = false;
-                foreach (var line in Iperf.ClassicConverter.ToJsonStreamLines(classic.ToString()))
-                {
-                    any = true;
-                    yield return line;
-                }
-                if (!any && proc.ExitCode != 0)
-                {
-                    // 旧版 iperf3（3.16）在 UDP 多流 + JSON 输出时会段错误（退出码 139），给用户可读的原因
-                    yield return $$"""{"event":"error","data":"iperf3 异常退出（退出码 {{proc.ExitCode}}），没有任何输出；旧版本（如 Ubuntu 24.04 的 3.16）存在 UDP 多流崩溃的已知缺陷，建议改用单流（-P 1）或升级 iperf3"}""";
-                }
-            }
         }
         finally
         {
@@ -270,16 +246,11 @@ public sealed class IperfRunner : IIperfRunner
             psi.ArgumentList.Add(a);
         }
         var proc = Process.Start(psi) ?? throw new InvalidOperationException("无法启动 iperf3");
-        if (OperatingSystem.IsWindows())
-        {
-            JobObject.Assign(proc);
-        }
+        JobObject.Assign(proc);
         return proc;
     }
 
-    // Windows：测速期间阻止系统睡眠（§6.1）；其他平台暂无对应机制，空实现
-    private static IDisposable PreventSleep() =>
-        OperatingSystem.IsWindows() ? ExecutionState.PreventSleep() : NoopDisposable.Instance;
+    private static IDisposable PreventSleep() => ExecutionState.PreventSleep();
 
     private void CleanupClient(Process? proc, IDisposable? sleep)
     {
@@ -330,14 +301,5 @@ public sealed class IperfRunner : IIperfRunner
         StopClientAsync().GetAwaiter().GetResult();
         _serverSlot.Dispose();
         _clientSlot.Dispose();
-    }
-
-    private sealed class NoopDisposable : IDisposable
-    {
-        public static readonly NoopDisposable Instance = new();
-
-        public void Dispose()
-        {
-        }
     }
 }

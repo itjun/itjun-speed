@@ -65,7 +65,7 @@ public static class NicFilter
                 long speedMbps = nic.Speed / 1_000_000;
                 if (speedMbps < 0 || speedMbps > 100_000)
                 {
-                    speedMbps = 0; // Linux 上未知速率返回 -1 或垃圾值
+                    speedMbps = 0; // 未知或异常协商速率
                 }
                 result.Add(new NicInfo(addr.Address.ToString(), prefix, nic.Name, speedMbps, defaultRoute, new IPAddress(broadcast)));
             }

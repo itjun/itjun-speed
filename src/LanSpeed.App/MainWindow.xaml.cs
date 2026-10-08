@@ -3,13 +3,15 @@ using System.Runtime.InteropServices;
 using H.NotifyIcon;
 using LanSpeed.App.Pages;
 using LanSpeed.App.Services;
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 
 namespace LanSpeed.App;
 
-/// <summary>主窗口：NavigationView 五页 + 托盘；关闭窗口隐藏到托盘，退出走托盘菜单（§8）。</summary>
+/// <summary>主窗口：NavigationView + 托盘；Win11 Mica；关闭窗口隐藏到托盘，退出走托盘菜单（§8）。</summary>
 public sealed partial class MainWindow : Window
 {
     private readonly DispatcherTimer _trayTimer = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -18,6 +20,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "内网测速";
+        TryEnableMica();
         // WinUI 3 桌面窗口类不注册图标（WinAppSDK 已知行为）：不 SetIcon 则标题栏/任务栏/Alt-Tab 全部空白
         AppWindow.SetIcon(IcoPath("app.ico"));
         AppWindow.Resize(new SizeInt32(1180, 760));
@@ -76,6 +79,22 @@ public sealed partial class MainWindow : Window
     private const double PaneMin = 160;
     private const double PaneDefault = 190;
     private const double PaneMax = 420;
+
+    /// <summary>Win11 启用云母；不支持（如 Win10）则保持默认主题背景。</summary>
+    private void TryEnableMica()
+    {
+        try
+        {
+            if (MicaController.IsSupported())
+            {
+                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
+            }
+        }
+        catch (Exception ex)
+        {
+            TrayLog($"Mica 不可用: {ex.Message}");
+        }
+    }
 
     /// <summary>拖拽条跟随窗格右缘；窗格收起/紧凑模式时隐藏。</summary>
     private void SyncResizer()

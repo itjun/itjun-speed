@@ -36,20 +36,4 @@ public class ArpTableTests
         Assert.Equal("00:1a:2b:3c:4d:5e", map["10.0.0.1"]);
     }
 
-    [Fact]
-    public void ParseIpNeigh()
-    {
-        const string output = """
-            192.168.210.1 dev enp6s18 lladdr aa:bb:cc:dd:ee:01 REACHABLE
-            192.168.210.79 dev enp6s18 lladdr aa:bb:cc:dd:ee:02 STALE
-            192.168.210.101 dev enp6s18  FAILED
-            192.168.210.103 dev enp6s18 lladdr aa:bb:cc:dd:ee:03 INCOMPLETE
-            fe80::1 dev enp6s18 lladdr aa:bb:cc:dd:ee:01 router REACHABLE
-            """;
-        var map = ArpTable.ParseIpNeigh(output);
-
-        Assert.Equal(2, map.Count);
-        Assert.Equal("aa:bb:cc:dd:ee:01", map["192.168.210.1"]);
-        Assert.Equal("aa:bb:cc:dd:ee:02", map["192.168.210.79"]);
-    }
 }

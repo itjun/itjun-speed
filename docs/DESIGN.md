@@ -1,9 +1,9 @@
 # 内网测速（LanSpeed）：Windows 局域网测速工具 — 设计文档
 
 > 本文档自包含，位于新仓库 `docs/DESIGN.md`，不依赖 1Panel 仓库。附录 A 已与 1Panel 源码逐条核对，差异与新增设计均在文中标注。
-> 技术栈：C# / .NET 10 LTS / WinUI 3（Windows App SDK）/ 内置 iperf3 3.22。
-> 状态：M1/M2/M3 已全部完成（含 WinUI 3 界面与托盘，2026-10-08）；M4 完成 MSIX 打包（自签名测试证书）、防火墙自检与一键放行、开机自启、检查更新（配置更新源），正式代码签名证书与自动更新服务留待发布时接入。Windows ↔ Linux（Ubuntu 24.04 / iperf3 3.16）双向实测通过。
-> 2026-10-08 变更：CLI 扩展为跨平台（Windows + Linux），Linux 节点使用系统 iperf3（见 §6.1 兼容层）。
+> 技术栈：C# / .NET 10 LTS / WinUI 3（Windows App SDK）/ CommunityToolkit.Mvvm / SQLite / 内置 iperf3 3.22。
+> 平台：**仅 Windows 10 1809+**（不做 Linux / macOS 节点；跨平台场景继续用 1Panel）。
+> 状态：引擎与对等节点架构已落地；产品面按 Windows-only 重做——软配对（SQLite）、历史上限 100、Win11 Mica、低于千兆排查标记（不拦截开测）。正式代码签名与自动更新服务留待发布时接入。
 
 ---
 
@@ -44,25 +44,29 @@ iperf3 -c <ip> -p 5201 -t 2 -P 1 -i 1 --json-stream --forceflush --bidir -u -b 2
 
 - 每台 Windows 安装同一个程序，常驻托盘，即可被局域网内其他电脑测速。
 - 自动扫描局域网：列出在线主机的内网 IP，识别哪些主机装了本工具。
-- 选若干台主机组成分组，执行**星形**与**矩阵**测速，实时展示进度与结果，保存历史。
-- 不需要 SSH、账号或配对。
+- **软配对**：发现后可「记住」主机，写入本地 SQLite；重启后按节点 ID 刷新 IP 并继续测速（无需账号、无需对方确认）。
+- 选若干台主机组成分组，执行**星形**与**矩阵**测速，实时展示进度与结果，保存最近 **100** 条历史。
+- **链路健康**：协商速率 &lt; 1000 Mbps 醒目标记为排查重点（百兆内网不应存在），**不拦截开测**。
+- 不需要 SSH 或显式确认配对。
 
 ### 第一版不做
 
 - 跨网段 / 跨 VLAN 的自动发现（只支持手动输入 IP）。
 - 公网测速、NAT 穿透。
 - 无人登录时被测（Windows 服务模式放到第二版）。
-- macOS / Linux 客户端（协议与语言无关，预留扩展）。
+- macOS / Linux 客户端（跨平台继续用 1Panel）。
 
 ## 2. 已确定的决策
 
 | 决策 | 选择 | 影响 |
 |---|---|---|
 | 产品名 | 用户可见名称「内网测速」；代码标识 `LanSpeed.*` | 窗口标题、托盘、exe 描述、MSIX 显示名用中文；命名空间与 MSIX 包标识用 ASCII |
-| 平台范围 | Windows 全功能；Linux 提供 CLI 节点（serve/test/scan/group） | 2026-10-08 新增：原「第一版不做 Linux 客户端」调整为准许 CLI 跨平台；协议与语言无关，GUI 仍为 Windows 专属 |
+| 平台范围 | **仅 Windows**（GUI + 可选 CLI） | Core/CLI/App 均为 Windows TFM；不做 Linux 系统 iperf3 / `-J` 回退产品路径 |
 | 语言与运行时 | C#，.NET 10 LTS | Windows 系统 API 集成方便 |
-| 界面 | WinUI 3（Windows App SDK 1.8+），MVVM 用 CommunityToolkit.Mvvm | 只能在 Windows 上构建 |
-| 测速引擎 | 内置 iperf3 3.22（`iperf3.exe` + `cygwin1.dll`） | 结果可与 Linux 端 iperf3 直接对比；需要管理子进程 |
+| 界面 | WinUI 3（Windows App SDK），CommunityToolkit.Mvvm；Win11 Mica / Win10 回退 | 严格 Fluent；ThemeResource |
+| 持久化 | SQLite（`%LOCALAPPDATA%\LanSpeed\lanspeed.db`） | 软配对主机 + 历史（上限 100） |
+| 测速引擎 | 内置 iperf3 3.22（`iperf3.exe` + `cygwin1.dll`），固定 `--json-stream` | 需要管理子进程 |
+| 链路健康 | &lt;1000 Mbps 标记排查，不拦截 | `LinkHealth` 分类；主机筛选「仅问题主机」 |
 | 信任模型 | 不鉴权 | 用“允许被测”开关与资源上限兜底（§9） |
 | 运行方式 | 托盘程序 + 开机自启 | 用户登录后才能被测 |
 | 打包 | MSIX 优先；备选未打包 + WiX | MSIX 清单可声明防火墙规则与开机自启（§10） |
@@ -105,7 +109,9 @@ flowchart LR
 | ControlServer | Kestrel（ASP.NET Core Minimal API），TCP 39301 |
 | IperfRunner | iperf3 解压、校验、子进程管理（服务端 / 客户端）、Job Object |
 | Orchestrator | 单对测速流程、星形 / 矩阵调度（仅发起机使用） |
-| HistoryStore | 本地历史（SQLite 或 JSON 文件） |
+| PairedHostStore | 软配对主机（SQLite，按节点 ID） |
+| HistoryStore | 本地历史（SQLite，上限 100，CSV 导出） |
+| LinkHealth | 协商速率分类：千兆及以上 / 低于千兆（排查） / 未知 |
 | FirewallService | 网络类型与防火墙规则自检、修复 |
 
 **控制接口不要用 `HttpListener`**：它监听非本机地址需要管理员做 urlacl 保留。用 Kestrel 内嵌在桌面进程即可。
@@ -208,15 +214,14 @@ flowchart LR
 
 ### 6.1 iperf3 管理
 
-- **Windows**：`assets/iperf3/win64/` 作为 Content 随包分发；首次运行复制到 `%LOCALAPPDATA%\LanSpeed\iperf3\3.22\`，按 SHA256 校验，不一致就重写。`iperf3.exe` 与 `cygwin1.dll` 必须在同一目录。
+- **Windows Only**：`assets/iperf3/win64/` 作为 Content 随包分发；首次运行复制到 `%LOCALAPPDATA%\LanSpeed\iperf3\3.22\`，按 SHA256 校验，不一致就重写。`iperf3.exe` 与 `cygwin1.dll` 必须在同一目录。
   - 打包为 MSIX 时安装目录只读，但可以直接从安装目录运行，无需复制；未打包时复制到 LocalAppData。
-- **Linux/macOS**：使用系统安装的 iperf3（`apt install iperf3` / `brew install iperf3`），不内嵌二进制。
-- **能力检测与兼容层**（2026-10-08 新增）：启动时执行 `iperf3 --help` 检测是否支持 `--json-stream`（Ubuntu 24.04 的 3.16 等发行版版本没有该选项）。不支持时客户端改用 `-J` 经典输出，节点在本地把单文档 JSON（start/intervals/end）转换为 json-stream 事件行（`ClassicConverter`），对发起机完全透明；代价是没有逐秒实时输出。
+- 产品路径固定 `--json-stream --forceflush`（内置 3.22）；不做 Linux 系统 iperf3 / `-J` 回退。
 - 子进程：`ProcessStartInfo { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true }`。
-- 所有 iperf3 进程加入一个 Job Object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`），主程序退出或崩溃时 iperf3 一并结束（仅 Windows；Linux 依靠服务端 maxSeconds 硬上限兜底）。
+- 所有 iperf3 进程加入一个 Job Object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`），主程序退出或崩溃时 iperf3 一并结束。
 - 服务端：`iperf3 -s -p <port>`；逐个尝试 5201–5210，启动后等 400 ms，进程仍存活即视为成功。**maxSeconds 到期杀进程时必须同时清空槽位状态**，否则节点会永远报 busy（实测踩过的坑）。
-- 测速期间调用 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` 阻止系统睡眠，结束后恢复（仅 Windows）。
-- **已知引擎缺陷**：① cygwin 版在 127.0.0.1 上跑高带宽 UDP 报 `Resource temporarily unavailable`（低速率正常，跨机不受影响）；② iperf3 3.16 在 UDP 多流 + JSON 输出时段错误（SIGSEGV，退出码 139）——检测到空输出 + 非零退出码时给出改用单流或升级的提示。
+- 测速期间调用 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` 阻止系统睡眠，结束后恢复。
+- **已知引擎缺陷**：cygwin 版在 127.0.0.1 上跑高带宽 UDP 报 `Resource temporarily unavailable`（低速率正常，跨机不受影响）。
 
 ### 6.2 单对测速流程（A → B，B 作服务端）
 
@@ -275,20 +280,21 @@ flowchart LR
 
 ## 8. 界面（WinUI 3）
 
-视觉跟随 Windows Fluent 设计：Mica 背景、系统强调色、跟随系统深浅色。`NavigationView` 分五页：
+视觉跟随 Windows Fluent 设计：Win11 `MicaBackdrop`、系统强调色、跟随系统深浅色（Win10 无 Mica 时用默认主题背景）。`NavigationView` + CommunityToolkit.Mvvm：
 
-- **主机**：扫描按钮、网段选择；主机表（状态、计算机名、IP、MAC / 厂商、版本、延迟）；按状态筛选；手动添加 IP。
-- **分组**：新建 / 编辑分组（只能勾选“已安装 · 可测”的主机）；星形或矩阵；中心机；参数；预计耗时；开始 / 停止；逐轮进度。
+- **主机**：扫描；主机表（状态、计算机名、IP、MAC、版本、**链路健康角标**）；软配对「记住 / 取消」；筛选「仅问题主机」（低于千兆）；已配对置顶；手动添加 IP。
+- **两机测试**：A/B 从扫描与配对列表选择；任一侧低于千兆时显示警告条（**仍可开测**）；1Panel 风格报表 + LiveCharts2 曲线 + 评价。
+- **分组**：新建 / 编辑分组（只能勾选“已安装 · 可测”的主机）；星形或矩阵；中心机；参数；预计耗时；开始 / 停止；逐轮进度；低千兆警告不拦截。
 - **结果**：
-  - 星形：表格，每行一台，显示双向吞吐、RTT、重传 / 丢包、结论等级。
-  - 矩阵：N×N 热力图（`ItemsRepeater` 自绘），单元格为“行 → 列”吞吐，颜色按结论等级；点击查看单对详情。
-  - 单对详情：吞吐曲线（LiveCharts2 的 WinUI 版）、汇总、结论文字。
-- **历史**：列表、详情、删除、导出 CSV。
+  - 星形：表格，每行一台，显示双向吞吐、RTT、重传 / 丢包、结论等级、链路健康。
+  - 矩阵：N×N 热力图（`ItemsRepeater`），单元格为“行 → 列”吞吐，颜色按结论等级；点击查看单对详情。
+  - 单对详情：吞吐曲线（LiveCharts2）、汇总、结论文字；`LinkMbps &lt; 1000` 时评价 notes 追加排查提示。
+- **历史**：列表、详情、删除、导出 CSV（SQLite，上限 100）。
 - **设置**：允许被测、端口、网卡过滤、防火墙自检与修复、开机自启、检查更新。
 
 托盘（H.NotifyIcon.WinUI）：图标区分空闲 / 被测中；菜单含“允许被测”开关、打开主界面、中止当前测速、退出。被测状态由图标与 tooltip 表达，可从托盘中止（气泡通知的实现说明见下方踩坑记录）。
 
-> 实现说明（2026-10-08）：六页与托盘已实现——主机（打开自动扫描）、两机测试（A、B 从扫描结果选择或手动录入；A 可选本机，A、B 均远程时本机仅作发起机；结果为 1Panel 风格报表：结论徽章 + 蓝/绿大数字卡 + 指标卡 + LiveCharts2 逐秒速率曲线）、分组、结果、历史、设置。吞吐曲线已用 LiveCharts2（LiveChartsCore.SkiaSharpView.WinUI）实现；矩阵 N×N 热力图以「结论等级着色的轮次表」代替。关闭窗口隐藏到托盘，退出走托盘菜单。注意 WinUI 页面事件在 InitializeComponent 中途即可能触发（如 ToggleSwitch 的 IsOn 默认值），处理函数必须做「页面就绪」守卫，否则 async void 中吞掉空引用异常极难排查（已踩坑）。
+> 实现说明（2026-10-08，Windows-only 重做后续）：六页与托盘——主机（自动扫描、软配对、低于千兆角标与筛选）、两机测试（配对列表 + 链路警告条不拦截 + 1Panel 风格报表 + LiveCharts2）、分组（低千兆警告不拦截）、结果（矩阵 N×N 热力 + 轮次表）、历史（SQLite 上限 100）、设置。Win11 `MicaBackdrop`；CommunityToolkit.Mvvm 已引入。关闭窗口隐藏到托盘。注意 WinUI 页面事件在 InitializeComponent 中途即可能触发，处理函数必须做「页面就绪」守卫。
 
 > 图标与托盘踩坑（2026-10-08，Win10 19044 实测）：
 > 1. **窗口图标**：WinUI 3 桌面窗口类（`WinUIDesktopWin32WindowClass`）注册时不带图标，exe 内嵌图标不会自动成为窗口图标——标题栏、任务栏、Alt-Tab 全部空白。必须在窗口构造时 `AppWindow.SetIcon(<安装目录>\Assets\app.ico)`（csproj 已把 `Assets\*.ico` 作为 Content 复制，打包/未打包路径一致取 `AppContext.BaseDirectory`）。
@@ -346,24 +352,21 @@ LanSpeed/
 ├── assets/iperf3/win64/           # iperf3.exe、cygwin1.dll、SHA256SUMS（Windows 专用）
 ├── docs/DESIGN.md                 # 本文档
 ├── src/
-│   ├── LanSpeed.Core/             # net10.0：与界面无关的全部逻辑（跨平台）
-│   │   ├── Iperf/                 # Params、Flow、ClientArgs、StreamParser、ProbeResult、ClassicConverter
-│   │   ├── Net/                   # Addr、地址分类、同网段判断、PingParser、NicFilter
-│   │   ├── Discovery/             # 发现协议报文、DiscoveryService（UDP 39300）
-│   │   ├── Scan/                  # Scanner（ping/ARP/端口探测）、ArpTable 解析
-│   │   ├── Control/               # 接口 DTO、INodeClient、HttpNodeClient、ControlServer（Kestrel）、LocalNode
-│   │   ├── Runner/                # IIperfRunner、IperfRunner、IperfLocator、IperfAssets、
-│   │   │                          #   Job Object / SetThreadExecutionState（Windows 分支，运行时守卫）
-│   │   ├── Orchestration/         # PairRunner、GroupRunner（星形 / 矩阵）、Pairing
+│   ├── LanSpeed.Core/             # net10.0-windows：与界面无关的全部逻辑（仅 Windows）
+│   │   ├── Iperf/                 # Params、Flow、ClientArgs、StreamParser、ProbeResult
+│   │   ├── Net/                   # Addr、NicFilter、PingHelper、LinkHealth
+│   │   ├── Discovery/             # DiscoveryService（UDP 39300）
+│   │   ├── Scan/                  # Scanner、ArpTable（arp -a）
+│   │   ├── Control/               # DTO、INodeClient、HttpNodeClient、ControlServer、LocalNode
+│   │   ├── Runner/                # IperfRunner、IperfLocator、IperfAssets、Job Object
+│   │   ├── Orchestration/         # PairRunner、GroupRunner、Pairing
 │   │   ├── Verdict/               # 结论规则
-│   │   └── History/               # HistoryStore（JSON 历史 + CSV 导出）
-│   ├── LanSpeed.App/              # WinUI 3：界面、托盘、MSIX 清单（M3 起实现，现为占位）
-│   └── LanSpeed.Cli/              # net10.0 跨平台命令行：serve / scan / test / group / history
+│   │   └── Persistence/           # AppDb（SQLite）、PairedHostStore、HistoryStore（上限 100）
+│   ├── LanSpeed.App/              # WinUI 3：MVVM、Mica、托盘、MSIX
+│   └── LanSpeed.Cli/              # 仅 Windows 调试命令行：serve / scan / test / group / history
 └── tests/
     └── LanSpeed.Core.Tests/       # xUnit；TestData/*.jsonl
 ```
-
-> 2026-10-08 结构调整：原 `LanSpeed.Windows` 工程并入 `LanSpeed.Core`（Windows 专用 API 用 `OperatingSystem.IsWindows()` 运行时守卫 + `[SupportedOSPlatform]` 标注），使 CLI 可同时产出 Windows 与 Linux 版本；GUI 所需的 Windows 工程在 M3 引入 WinUI 时再拆出。
 
 ## 13. 里程碑与验收
 

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using LanSpeed.App.Services;
 using LanSpeed.Core.Iperf;
+using LanSpeed.Core.Net;
 using LanSpeed.Core.Orchestration;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -87,10 +88,27 @@ public sealed partial class GroupPage : Page
 
     private void UpdateHint()
     {
-        int n = SelectedMembers().Count;
+        var members = SelectedMembers();
+        int n = members.Count;
         MemberHint.Text = n < 2
             ? $"已选 {n} 台，至少需要 2 台。先在「主机」页扫描并确认对方已安装。"
             : $"已选 {n} 台；星形 {(n - 1)} 轮双向，矩阵 {n * (n - 1)} 轮单向。";
+
+        if (LinkWarnBar is null)
+        {
+            return;
+        }
+        bool hasProblem = members.Any(ip =>
+        {
+            var host = AppServices.Current.LastScan.FirstOrDefault(h => h.Ip == ip);
+            if (host != null)
+            {
+                return LinkHealth.IsInvestigationTarget(AppServices.HostLinkMbps(host));
+            }
+            var local = AppServices.Current.Node.Addrs().FirstOrDefault(a => a.Ip == ip);
+            return local != null && LinkHealth.IsInvestigationTarget(local.SpeedMbps);
+        });
+        LinkWarnBar.IsOpen = hasProblem;
     }
 
     private List<string> SelectedMembers() =>

@@ -1,5 +1,6 @@
 using System.Text.Json;
-using LanSpeed.Core.Verdict;
+using LanSpeed.Core.Persistence;
+using Microsoft.Data.Sqlite;
 
 namespace LanSpeed.Core.History;
 
@@ -26,25 +27,40 @@ public sealed record HistoryRecord(
     string Direction,
     List<HistoryPair> Pairs);
 
-/// <summary>本地历史（§8 历史页的存储层）：单 JSON 文件、新在前、上限 200、.tmp+rename 原子写。</summary>
-public sealed class HistoryStore(string? path = null)
+/// <summary>本地历史（SQLite）：新在前、上限 100、CSV 导出。</summary>
+public sealed class HistoryStore
 {
-    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    public const int MaxRecords = 100;
 
-    private string PathValue => path ?? System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LanSpeed", "history.json");
+    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+
+    private readonly AppDb _db;
+
+    public HistoryStore(string? dbPath = null) => _db = new AppDb(dbPath);
+
+    public HistoryStore(AppDb db) => _db = db;
 
     public List<HistoryRecord> Load()
     {
         try
         {
-            if (!File.Exists(PathValue))
+            using var conn = _db.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT payload FROM history ORDER BY time DESC LIMIT $lim";
+            cmd.Parameters.AddWithValue("$lim", MaxRecords);
+            var list = new List<HistoryRecord>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                return [];
+                var record = JsonSerializer.Deserialize<HistoryRecord>(reader.GetString(0), JsonOpts);
+                if (record != null)
+                {
+                    list.Add(record);
+                }
             }
-            return JsonSerializer.Deserialize<List<HistoryRecord>>(File.ReadAllText(PathValue), JsonOpts) ?? [];
+            return list;
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or JsonException or SqliteException or UnauthorizedAccessException)
         {
             return [];
         }
@@ -52,35 +68,46 @@ public sealed class HistoryStore(string? path = null)
 
     public void Append(HistoryRecord record)
     {
-        var records = Load();
-        records.Insert(0, record);
-        if (records.Count > 200)
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction();
+        using (var cmd = conn.CreateCommand())
         {
-            records.RemoveRange(200, records.Count - 200);
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO history (id, time, mode, protocol, duration, parallel, direction, payload)
+                VALUES ($id, $time, $mode, $proto, $dur, $par, $dir, $payload)
+                """;
+            cmd.Parameters.AddWithValue("$id", record.Id);
+            cmd.Parameters.AddWithValue("$time", record.Time.ToUniversalTime().ToString("O"));
+            cmd.Parameters.AddWithValue("$mode", record.Mode);
+            cmd.Parameters.AddWithValue("$proto", record.Protocol);
+            cmd.Parameters.AddWithValue("$dur", record.Duration);
+            cmd.Parameters.AddWithValue("$par", record.Parallel);
+            cmd.Parameters.AddWithValue("$dir", record.Direction);
+            cmd.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(record, JsonOpts));
+            cmd.ExecuteNonQuery();
         }
-        WriteAll(records);
+        using (var trim = conn.CreateCommand())
+        {
+            trim.Transaction = tx;
+            trim.CommandText = """
+                DELETE FROM history WHERE id NOT IN (
+                  SELECT id FROM history ORDER BY time DESC LIMIT $lim
+                )
+                """;
+            trim.Parameters.AddWithValue("$lim", MaxRecords);
+            trim.ExecuteNonQuery();
+        }
+        tx.Commit();
     }
 
     public void Delete(string id)
     {
-        var records = Load();
-        if (records.RemoveAll(r => r.Id == id) > 0)
-        {
-            WriteAll(records);
-        }
-    }
-
-    private void WriteAll(List<HistoryRecord> records)
-    {
-        string full = PathValue;
-        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
-        string tmp = full + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(records, JsonOpts));
-        if (File.Exists(full))
-        {
-            File.Delete(full);
-        }
-        File.Move(tmp, full);
+        using var conn = _db.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM history WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
     }
 
     public void WriteCsv(string csvPath)

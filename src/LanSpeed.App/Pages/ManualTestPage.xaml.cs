@@ -3,6 +3,7 @@ using LanSpeed.App.Services;
 using LanSpeed.Core.Control;
 using LanSpeed.Core.History;
 using LanSpeed.Core.Iperf;
+using LanSpeed.Core.Net;
 using LanSpeed.Core.Orchestration;
 using LanSpeed.Core.Verdict;
 using LiveChartsCore;
@@ -63,25 +64,42 @@ public sealed partial class ManualTestPage : Page
             HostBCombo.Items.Add(new ComboBoxItem { Content = $"{local.Ip}（本机）", Tag = local.Ip });
         }
         var localIps = addrs.Select(a => a.Ip).ToHashSet();
+        var seen = new HashSet<string>(localIps);
         foreach (var h in AppServices.Current.LastScan)
         {
             // 本机已单独列出，扫描发现里的本机条目跳过
-            if (h.Hello is null || !h.PortOk || localIps.Contains(h.Ip))
+            if (h.Hello is null || !h.PortOk || localIps.Contains(h.Ip) || !seen.Add(h.Ip))
             {
                 continue;
             }
-            string label = $"{h.Ip}（{h.Hello.Name}{(h.Hello.Accept ? string.Empty : "，拒绝被测")}）";
+            long link = AppServices.HostLinkMbps(h);
+            string linkTag = LinkHealth.IsInvestigationTarget(link) ? " · 低于千兆" : string.Empty;
+            string label = $"{h.Ip}（{h.Hello.Name}{(h.Hello.Accept ? string.Empty : "，拒绝被测")}{linkTag}）";
             HostACombo.Items.Add(new ComboBoxItem { Content = label, Tag = h.Ip });
             HostBCombo.Items.Add(new ComboBoxItem { Content = label, Tag = h.Ip });
+        }
+        // 已配对但本次未扫到的主机也列出，便于重启后继续测
+        foreach (var p in AppServices.Current.PairedHosts.List())
+        {
+            string ip = p.LastIps.FirstOrDefault() ?? string.Empty;
+            if (string.IsNullOrEmpty(ip) || !seen.Add(ip))
+            {
+                continue;
+            }
+            string linkTag = LinkHealth.IsInvestigationTarget(p.LinkMbps) ? " · 低于千兆" : string.Empty;
+            string label = $"{ip}（{p.Name} · 已配对{linkTag}）";
+            HostACombo.Items.Add(new ComboBoxItem { Content = label, Tag = ip });
+            HostBCombo.Items.Add(new ComboBoxItem { Content = label, Tag = ip });
         }
         HostACombo.Text = keepA;
         HostBCombo.Text = keepB;
         HostHint.Text = HostACombo.Items.Count > 1
-            ? $"已列出 {HostACombo.Items.Count - 1} 台扫描到的已安装主机；也可以直接输入任意 IP（跨网段可用）。"
-            : "尚未扫描到已安装主机：先到「主机」页扫描，或直接输入对端 IP（需对端运行本工具）。";
+            ? $"已列出扫描与已配对主机；也可以直接输入任意 IP（跨网段可用）。"
+            : "尚未扫描到已安装主机：先到「主机」页扫描并「记住」，或直接输入对端 IP。";
+        UpdateLinkWarn();
     }
 
-    private void OnHostASelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnHostSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (HostAPort is null)
         {
@@ -90,6 +108,74 @@ public sealed partial class ManualTestPage : Page
         // A 选「本机」时不走网络，端口输入无意义
         bool isLocal = (HostACombo.SelectedItem as ComboBoxItem)?.Tag as string == LocalTag;
         HostAPort.IsEnabled = !isLocal;
+        UpdateLinkWarn();
+    }
+
+    /// <summary>任一侧低于千兆则显示警告条（不拦截开测）。</summary>
+    private void UpdateLinkWarn()
+    {
+        if (LinkWarnBar is null)
+        {
+            return;
+        }
+        long a = ResolveLinkMbps(HostACombo);
+        long b = ResolveLinkMbps(HostBCombo);
+        var cls = LinkHealth.ClassifyPath(a, b);
+        if (cls == LinkClass.BelowGigabit)
+        {
+            long path = a > 0 && b > 0 ? Math.Min(a, b) : Math.Max(a, b);
+            LinkWarnBar.Severity = InfoBarSeverity.Warning;
+            LinkWarnBar.Title = "疑似百兆链路";
+            LinkWarnBar.Message = LinkHealth.InvestigationHint(path)
+                ?? "所选主机协商低于千兆，应排查后对照测速结果。";
+            LinkWarnBar.IsOpen = true;
+        }
+        else if (cls == LinkClass.Unknown
+                 && !string.IsNullOrWhiteSpace(HostACombo.Text)
+                 && !string.IsNullOrWhiteSpace(HostBCombo.Text))
+        {
+            LinkWarnBar.Severity = InfoBarSeverity.Informational;
+            LinkWarnBar.Title = "链路未知";
+            LinkWarnBar.Message = "未能读取协商速率，测速后请对照结果确认端口协商。";
+            LinkWarnBar.IsOpen = true;
+        }
+        else
+        {
+            LinkWarnBar.IsOpen = false;
+            LinkWarnBar.Severity = InfoBarSeverity.Warning;
+            LinkWarnBar.Title = "疑似百兆链路";
+        }
+    }
+
+    private static long ResolveLinkMbps(ComboBox combo)
+    {
+        string? ip = (combo.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (ip == LocalTag || string.IsNullOrEmpty(ip))
+        {
+            if (ip == LocalTag)
+            {
+                var speeds = AppServices.Current.Node.Addrs().Select(a => a.SpeedMbps).Where(s => s > 0).ToList();
+                return speeds.Count > 0 ? speeds.Min() : 0;
+            }
+            string text = combo.Text.Trim();
+            if (text.StartsWith("本机", StringComparison.Ordinal))
+            {
+                var speeds = AppServices.Current.Node.Addrs().Select(a => a.SpeedMbps).Where(s => s > 0).ToList();
+                return speeds.Count > 0 ? speeds.Min() : 0;
+            }
+            ip = text.Contains('（') ? text.Split('（')[0].Trim() : text;
+        }
+        if (string.IsNullOrEmpty(ip))
+        {
+            return 0;
+        }
+        var host = AppServices.Current.LastScan.FirstOrDefault(h => h.Ip == ip);
+        if (host != null)
+        {
+            return AppServices.HostLinkMbps(host);
+        }
+        var paired = AppServices.Current.PairedHosts.List().FirstOrDefault(p => p.LastIps.Contains(ip));
+        return paired?.LinkMbps ?? 0;
     }
 
     private static bool IsValidIp(string s) =>
