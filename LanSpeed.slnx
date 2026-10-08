@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LanSpeed.App/LanSpeed.App.csproj" />
+    <Project Path="src/LanSpeed.Cli/LanSpeed.Cli.csproj" />
+    <Project Path="src/LanSpeed.Core/LanSpeed.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LanSpeed.Core.Tests/LanSpeed.Core.Tests.csproj" />
+  </Folder>
+</Solution>

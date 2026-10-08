@@ -1,0 +1,13 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 用户可见名称为「内网测速」；代码标识 LanSpeed 保持 ASCII -->
+    <Product>内网测速</Product>
+    <Version>0.1.0-m1</Version>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+    xmlns:desktop2="http://schemas.microsoft.com/appx/manifest/desktop/windows10/2"
+    IgnorableNamespaces="mp uap rescap desktop desktop2">
+
+  <Identity
+      Name="LanSpeed"
+      Publisher="CN=LanSpeed"
+      Version="0.1.0.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>内网测速</DisplayName>
+    <PublisherDisplayName>LanSpeed</PublisherDisplayName>
+    <Logo>Assets\Square150x150Logo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="zh-cn" />
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Extensions>
+    <!-- 防火墙规则（§10）：安装时自动添加入站放行，卸载时清理（按可执行文件粒度） -->
+    <desktop2:Extension Category="windows.firewallRules" Executable="LanSpeed.App.exe" EntryPoint="Windows.FullTrustApplication">
+      <desktop2:FirewallRules Executable="LanSpeed.App.exe">
+        <desktop2:Rule Direction="in" IPProtocol="UDP" Profile="private" />
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="private" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+    <!-- iperf3 从安装目录运行（MSIX 安装目录只读，无需复制；§6.1） -->
+    <desktop2:Extension Category="windows.firewallRules" Executable="assets\iperf3\win64\iperf3.exe" EntryPoint="Windows.FullTrustApplication">
+      <desktop2:FirewallRules Executable="assets\iperf3\win64\iperf3.exe">
+        <desktop2:Rule Direction="in" IPProtocol="UDP" Profile="private" />
+        <desktop2:Rule Direction="in" IPProtocol="TCP" Profile="private" />
+      </desktop2:FirewallRules>
+    </desktop2:Extension>
+  </Extensions>
+
+  <Applications>
+    <Application Id="App" Executable="LanSpeed.App.exe" EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+          DisplayName="内网测速"
+          Description="局域网测速工具：扫描、分组测速、历史"
+          BackgroundColor="#007ACC"
+          Square44x44Logo="Assets\Square44x44Logo.png"
+          Square150x150Logo="Assets\Square150x150Logo.png" />
+      <Extensions>
+        <!-- 开机自启（§10：MSIX 用 desktop:StartupTask，未打包模式写 HKCU Run） -->
+        <desktop:Extension Category="windows.startupTask" Executable="LanSpeed.App.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="LanSpeedStartup" Enabled="true" DisplayName="内网测速" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- 桌面应用（打包版 WinUI + 托盘 + 子进程 iperf3）需要完全信任 -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

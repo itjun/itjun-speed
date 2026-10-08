@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="LanSpeed.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tb="using:H.NotifyIcon"
+    Title="内网测速">
+
+    <Grid>
+        <NavigationView
+            x:Name="Nav"
+            IsBackButtonVisible="Collapsed"
+            IsTitleBarAutoPaddingEnabled="False"
+            SelectionChanged="OnNavSelection">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="主机" Tag="hosts" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8F1;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="分组" Tag="group">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE902;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="结果" Tag="results">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE9D2;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="历史" Tag="history">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE81C;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="设置" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <!-- 托盘（§8）：图标区分状态，菜单含允许被测/中止/退出 -->
+        <tb:TaskbarIcon
+            x:Name="Tray"
+            ToolTipText="内网测速"
+            MenuActivation="RightClick">
+            <tb:TaskbarIcon.ContextFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="打开主界面" Click="OnShowWindow">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE8A7;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <ToggleMenuFlyoutItem x:Name="TrayAccept" Text="允许被测" Click="OnTrayAcceptToggle" />
+                    <MenuFlyoutItem Text="中止当前测速" Click="OnStopCurrent">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE71A;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Text="退出" Click="OnExitApp">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE7E8;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuFlyout>
+            </tb:TaskbarIcon.ContextFlyout>
+        </tb:TaskbarIcon>
+    </Grid>
+</Window>

@@ -1,0 +1,20 @@
+# 换行符：仓库内统一 LF，检出按平台处理
+* text=auto
+
+# Windows 专用脚本保持 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Linux 侧脚本保持 LF
+*.sh text eol=lf
+
+# 二进制文件：严禁任何转换（iperf3 资源依赖 SHA256 校验）
+*.exe binary
+*.dll binary
+*.png binary
+*.ico binary
+*.pfx binary
+*.cer binary
+*.appx binary
+*.msix binary

@@ -1,0 +1,8 @@
+bin/
+obj/
+publish/
+*.user
+packaging/AppPackages/
+packaging/LanSpeed.pfx
+packaging/LanSpeed.cer
+.zcode/

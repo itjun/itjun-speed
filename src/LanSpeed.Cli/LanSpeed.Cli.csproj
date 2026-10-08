@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>LanSpeed.Cli</AssemblyName>
+    <!-- Windows 与 Linux 节点共用本 CLI；iperf3 在 Windows 用内置资源、Linux 用系统安装 -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LanSpeed.Core\LanSpeed.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- iperf3 资源随 CLI 输出目录分发，运行时按 SHA256 校验后落盘 %LOCALAPPDATA%（仅 Windows 使用） -->
+    <Content Include="..\..\assets\iperf3\win64\**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets\iperf3\win64" />
+  </ItemGroup>
+
+</Project>
