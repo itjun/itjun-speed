@@ -11,6 +11,18 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        // UI 线程未处理异常（含 async void）落盘，便于排障；不吞异常，仍走默认崩溃路径
+        UnhandledException += (_, e) =>
+        {
+            try
+            {
+                var line = $"{DateTime.Now:HH:mm:ss.fff} UnhandledException: {e.Message}\n{e.Exception}\n";
+                File.AppendAllText(
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LanSpeed", "ui-debug.log"),
+                    line);
+            }
+            catch { /* 日志失败不影响原异常 */ }
+        };
     }
 
     public static MainWindow? MainWnd { get; private set; }

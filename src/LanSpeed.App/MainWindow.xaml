@@ -11,11 +11,18 @@
             x:Name="Nav"
             IsBackButtonVisible="Collapsed"
             IsTitleBarAutoPaddingEnabled="False"
+            IsSettingsVisible="False"
+            OpenPaneLength="190"
             SelectionChanged="OnNavSelection">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="主机" Tag="hosts" IsSelected="True">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8F1;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="两机测试" Tag="manual">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE768;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="分组" Tag="group">
@@ -69,5 +76,41 @@
                 </MenuFlyout>
             </tb:TaskbarIcon.ContextFlyout>
         </tb:TaskbarIcon>
+
+        <!-- 窗格宽度拖拽条：拖动实时调整侧栏宽度（160–420），宽度记忆到设置 -->
+        <Thumb
+            x:Name="PaneResizer"
+            Width="7"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Stretch"
+            Margin="0,48,0,24"
+            Background="Transparent"
+            PointerEntered="OnResizerPointerEntered"
+            PointerExited="OnResizerPointerExited"
+            DragDelta="OnResizerDragDelta"
+            DragCompleted="OnResizerDragCompleted"
+            DoubleTapped="OnResizerDoubleTapped">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Bar" Background="Transparent" CornerRadius="3">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bar.Background" Value="#33007ACC" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Bar.Background" Value="#66007ACC" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
     </Grid>
 </Window>

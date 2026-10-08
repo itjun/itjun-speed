@@ -11,6 +11,9 @@ public sealed class AppSettings
 
     public bool AutoStart { get; set; }
 
+    /// <summary>主窗口侧栏宽度（NavigationView OpenPaneLength，160–420）。</summary>
+    public double PaneWidth { get; set; } = 190;
+
     /// <summary>检查更新用的版本信息 URL；为空表示不检查（M4 简版：读取 JSON {"version":"x.y.z"}）。</summary>
     public string UpdateCheckUrl { get; set; } = string.Empty;
 
