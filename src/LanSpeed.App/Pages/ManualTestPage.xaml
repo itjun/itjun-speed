@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="LanSpeed.App.Pages.ManualTestPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:lvc="using:LiveChartsCore.SkiaSharpView.WinUI">
+
+    <Page.Resources>
+        <!-- 1Panel 风格配色：下行绿 / 上行蓝，等级橙红灰 -->
+        <SolidColorBrush x:Key="AbBrush" Color="#007ACC" />
+        <SolidColorBrush x:Key="BaBrush" Color="#00B42A" />
+        <SolidColorBrush x:Key="AbSoftBrush" Color="#E6F4FC" />
+        <SolidColorBrush x:Key="BaSoftBrush" Color="#E8F7EC" />
+        <SolidColorBrush x:Key="WarnBrush" Color="#FA8C16" />
+        <SolidColorBrush x:Key="BadBrush" Color="#F5222D" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#8A94A6" />
+        <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E9F0" Opacity="0.9" />
+        <Style x:Key="MetricLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <Grid RowSpacing="12" Padding="20,16" MinWidth="900" MaxWidth="1120" HorizontalAlignment="Center">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- A / B 两台机器：从扫描结果下拉选择，或直接输入任意 IP（跨网段也可） -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="两机测试（A 作客户端、B 作服务端；测速流量只在 A、B 之间）" FontWeight="SemiBold" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ComboBox x:Name="HostACombo" Header="A 机" IsEditable="True" Width="280"
+                                  PlaceholderText="选择或输入 IP" SelectionChanged="OnHostASelectionChanged" />
+                        <NumberBox x:Name="HostAPort" Header="A 控制端口" Value="39301" Minimum="1024" Maximum="65535"
+                                   SpinButtonPlacementMode="Compact" Width="130" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ComboBox x:Name="HostBCombo" Header="B 机" IsEditable="True" Width="280"
+                                  PlaceholderText="选择或输入 IP" />
+                        <NumberBox x:Name="HostBPort" Header="B 控制端口" Value="39301" Minimum="1024" Maximum="65535"
+                                   SpinButtonPlacementMode="Compact" Width="130" />
+                    </StackPanel>
+                    <TextBlock x:Name="HostHint" Foreground="Gray" FontSize="12" TextWrapping="Wrap"
+                               Text="下拉列出最近扫描到的已安装主机（含本机），也可以直接输入任意 IP。A 选「本机」时由本机打流；A、B 都选远程主机时本机仅作为发起机调度。" />
+                </StackPanel>
+            </Border>
+
+            <!-- 参数 -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+                <ComboBox x:Name="Direction" Header="方向" SelectedIndex="0" Width="110">
+                    <ComboBoxItem Content="正向" Tag="forward" />
+                    <ComboBoxItem Content="反向" Tag="reverse" />
+                    <ComboBoxItem Content="双向" Tag="bidir" />
+                </ComboBox>
+                <NumberBox x:Name="DurationBox" Header="时长（秒）" Value="10" Minimum="3" Maximum="300"
+                           SpinButtonPlacementMode="Compact" Width="110" />
+                <NumberBox x:Name="ParallelBox" Header="并行流" Value="4" Minimum="1" Maximum="64"
+                           SpinButtonPlacementMode="Compact" Width="90" />
+                <CheckBox x:Name="UdpCheck" Content="UDP" VerticalAlignment="Bottom" />
+                <NumberBox x:Name="BandwidthBox" Header="UDP 总带宽 Mbps" Value="200" Minimum="0"
+                           SpinButtonPlacementMode="Compact" Width="140" />
+                <Button x:Name="StartButton" Content="开始测速" Style="{StaticResource AccentButtonStyle}"
+                        Click="OnStart" VerticalAlignment="Bottom" Margin="0,0,0,1" />
+                <ProgressRing x:Name="RunRing" IsActive="False" Width="24" VerticalAlignment="Bottom" />
+            </StackPanel>
+
+            <!-- 报表：结论横幅 + 双色大数字卡 + 指标卡 + 速率曲线 -->
+            <StackPanel Grid.Row="2" Spacing="10">
+
+                <!-- 结论横幅 -->
+                <Border x:Name="GradeBanner" Background="{StaticResource AbSoftBrush}" CornerRadius="8" Padding="16,10"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <Border x:Name="GradeBadge" Background="{StaticResource BaBrush}" CornerRadius="6" Padding="14,6" VerticalAlignment="Center">
+                            <TextBlock x:Name="GradeText" Text="很快" FontSize="20" FontWeight="Bold" Foreground="White" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="GradeTitle" Text="" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="GradeSub" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 大数字卡：A→B（蓝）/ B→A（绿，1Panel 上行绿/下行蓝对调无妨：与图表图例一致即可） -->
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="AbCardBorder" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="16,12">
+                        <StackPanel Spacing="2">
+                            <TextBlock x:Name="AbTitle" Text="A→B（本机 → 对端）" Style="{StaticResource MetricLabel}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock x:Name="AbValue" Text="—" FontSize="42" FontWeight="Bold" Foreground="{StaticResource AbBrush}" />
+                                <TextBlock x:Name="AbUnit" Text="" FontSize="15" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                            </StackPanel>
+                            <TextBlock x:Name="AbSub" Text="尚未测速" Style="{StaticResource MetricLabel}" />
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="BaCardBorder" Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="16,12">
+                        <StackPanel Spacing="2">
+                            <TextBlock x:Name="BaTitle" Text="B→A（对端 → 本机）" Style="{StaticResource MetricLabel}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock x:Name="BaValue" Text="—" FontSize="42" FontWeight="Bold" Foreground="{StaticResource BaBrush}" />
+                                <TextBlock x:Name="BaUnit" Text="" FontSize="15" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+                            </StackPanel>
+                            <TextBlock x:Name="BaSub" Text="尚未测速" Style="{StaticResource MetricLabel}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 指标小卡 -->
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="A→B 峰值" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="PeakAb" Text="—" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource AbBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="B→A 峰值" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="PeakBa" Text="—" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BaBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="重传" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="Retrans" Text="—" FontSize="16" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="RTT" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="Rtt" Text="—" FontSize="16" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="4" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="抖动 / 丢包" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="UdpStat" Text="—" FontSize="16" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="5" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12,8">
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="链路上限" Style="{StaticResource MetricLabel}" />
+                            <TextBlock x:Name="LinkCap" Text="—" FontSize="16" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 速率曲线（LiveCharts2 WinUI） -->
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="速率曲线（逐秒，Mbps）" FontWeight="SemiBold" />
+                        <lvc:CartesianChart x:Name="RateChart" Height="200" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="ResultText" Foreground="Gray" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </StackPanel>
+
+            <!-- 逐秒采样明细 -->
+            <Border Grid.Row="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{StaticResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="8">
+                <ListView x:Name="SampleList" SelectionMode="None" FontFamily="Consolas" FontSize="12" MaxHeight="200" />
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Page>

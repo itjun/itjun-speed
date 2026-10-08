@@ -6,6 +6,8 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <RootNamespace>LanSpeed.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe/任务栏/窗口图标（多尺寸 ico，16–256） -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
@@ -29,6 +31,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WinUI" Version="2.0.5" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,6 +41,13 @@
   <ItemGroup>
     <!-- iperf3 资源随 App 分发（Windows 节点用） -->
     <Content Include="..\..\assets\iperf3\win64\**" CopyToOutputDirectory="PreserveNewest" LinkBase="assets\iperf3\win64" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 图标：exe 嵌入 + 托盘/MSIX 运行时可达 -->
+    <Content Include="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\*.png" Exclude="Assets\app-256.png;Assets\app-busy-256.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\app-256.png;Assets\app-busy-256.png" />
   </ItemGroup>
 
 </Project>
