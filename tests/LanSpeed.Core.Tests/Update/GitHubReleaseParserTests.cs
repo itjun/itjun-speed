@@ -15,12 +15,12 @@ public class GitHubReleaseParserTests
               "body": "minVersion: 0.2.0\r\n\r\n修复扫描。",
               "assets": [
                 {
-                  "name": "LanSpeed-0.3.0-win-arm64.msix",
-                  "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-arm64.msix"
+                  "name": "LanSpeed-0.3.0-win-arm64.exe",
+                  "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-arm64.exe"
                 },
                 {
-                  "name": "LanSpeed.App_0.3.0.0_x64.msix",
-                  "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed.App_0.3.0.0_x64.msix"
+                  "name": "LanSpeed.App_0.3.0.0_x64.exe",
+                  "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed.App_0.3.0.0_x64.exe"
                 },
                 {
                   "name": "update.json",
@@ -37,33 +37,33 @@ public class GitHubReleaseParserTests
         Assert.Equal("修复扫描。", release.Notes);
         ReleaseAsset? package = GitHubReleaseParser.SelectAmd64Package(release.Assets);
         Assert.NotNull(package);
-        Assert.Equal("LanSpeed.App_0.3.0.0_x64.msix", package.Name);
+        Assert.Equal("LanSpeed.App_0.3.0.0_x64.exe", package.Name);
     }
 
     [Fact]
     public void Manifest_RequiresAmd64()
     {
         const string json = """
-            {"version":"0.3.0","minVersion":"0.2.0","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.msix"}
+            {"version":"0.3.0","minVersion":"0.2.0","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.exe"}
             """;
         Assert.True(GitHubReleaseParser.TryParseManifest(json, out UpdateManifest? manifest, out string? error), error);
         Assert.Equal(new AppVersion(0, 2, 0), manifest!.Minimum);
 
         const string arm = """
-            {"version":"0.3.0","minVersion":"0.2.0","arch":"arm64","file":"LanSpeed-0.3.0-win-arm64.msix"}
+            {"version":"0.3.0","minVersion":"0.2.0","arch":"arm64","file":"LanSpeed-0.3.0-win-arm64.exe"}
             """;
         Assert.False(GitHubReleaseParser.TryParseManifest(arm, out _, out string? armError));
         Assert.Contains("amd64", armError);
     }
 
     [Theory]
-    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.msix", true)]
-    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed.App_0.2.0.0_x64.msix", true)]
-    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-arm64.msix", false)]
-    [InlineData("https://github.com/other/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.msix", false)]
-    [InlineData("http://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.msix", false)]
-    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.msix?raw=1", false)]
-    [InlineData("https://example.com/LanSpeed-0.2.0-win-x64.msix", false)]
+    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.exe", true)]
+    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed.App_0.2.0.0_x64.exe", true)]
+    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-arm64.exe", false)]
+    [InlineData("https://github.com/other/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.exe", false)]
+    [InlineData("http://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.exe", false)]
+    [InlineData("https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.exe?raw=1", false)]
+    [InlineData("https://example.com/LanSpeed-0.2.0-win-x64.exe", false)]
     public void PackageUrl_OnlyOfficialAmd64(string url, bool trusted) =>
         Assert.Equal(trusted, GitHubReleaseParser.IsTrustedPackageUrl(url));
 
@@ -72,7 +72,7 @@ public class GitHubReleaseParserTests
     {
         UpdateOffer optional = await Check("0.2.0", Manifest("0.2.0"));
         Assert.Equal(UpdateRequirement.Optional, optional.Requirement);
-        Assert.EndsWith("LanSpeed-0.3.0-win-x64.msix", optional.DownloadUrl, StringComparison.Ordinal);
+        Assert.EndsWith("LanSpeed-0.3.0-win-x64.exe", optional.DownloadUrl, StringComparison.Ordinal);
 
         UpdateOffer required = await Check("0.1.0", Manifest("0.2.0"));
         Assert.Equal(UpdateRequirement.Required, required.Requirement);
@@ -82,7 +82,7 @@ public class GitHubReleaseParserTests
     [Fact]
     public async Task Checker_ManifestMismatch_IsAnError()
     {
-        using HttpClient http = Client(_ => Json("""{"version":"9.0.0","minVersion":"0.1.0","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.msix"}"""));
+        using HttpClient http = Client(_ => Json("""{"version":"9.0.0","minVersion":"0.1.0","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.exe"}"""));
         var result = await new UpdateChecker(http).CheckAsync("0.2.0", feedOverride: null);
         Assert.True(result.Failed);
         Assert.Contains("不一致", result.Error);
@@ -114,8 +114,8 @@ public class GitHubReleaseParserTests
         using var http = new HttpClient(handler);
         await Assert.ThrowsAsync<InvalidOperationException>(() => UpdateDownloader.DownloadAsync(
             http,
-            "https://example.com/LanSpeed-0.2.0-win-x64.msix",
-            "LanSpeed-0.2.0-win-x64.msix",
+            "https://example.com/LanSpeed-0.2.0-win-x64.exe",
+            "LanSpeed-0.2.0-win-x64.exe",
             Path.GetTempPath()));
         Assert.Empty(handler.Requests);
     }
@@ -136,8 +136,8 @@ public class GitHubReleaseParserTests
         using var http = new HttpClient(handler);
         string path = await UpdateDownloader.DownloadAsync(
             http,
-            "https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.msix",
-            "LanSpeed-0.2.0-win-x64.msix",
+            "https://github.com/itjun/itjun-speed/releases/download/v0.2.0/LanSpeed-0.2.0-win-x64.exe",
+            "LanSpeed-0.2.0-win-x64.exe",
             dir);
         try
         {
@@ -160,7 +160,7 @@ public class GitHubReleaseParserTests
     }
 
     private static string Manifest(string minimum) =>
-        $$"""{"version":"0.3.0","minVersion":"{{minimum}}","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.msix"}""";
+        $$"""{"version":"0.3.0","minVersion":"{{minimum}}","arch":"amd64","file":"LanSpeed-0.3.0-win-x64.exe"}""";
 
     private static HttpClient Client(Func<HttpRequestMessage, HttpResponseMessage> manifest)
     {
@@ -181,12 +181,12 @@ public class GitHubReleaseParserTests
           "body": "minVersion: 0.0.1",
           "assets": [
             {
-              "name": "LanSpeed-0.3.0-win-arm64.msix",
-              "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-arm64.msix"
+              "name": "LanSpeed-0.3.0-win-arm64.exe",
+              "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-arm64.exe"
             },
             {
-              "name": "LanSpeed-0.3.0-win-x64.msix",
-              "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-x64.msix"
+              "name": "LanSpeed-0.3.0-win-x64.exe",
+              "browser_download_url": "https://github.com/itjun/itjun-speed/releases/download/v0.3.0/LanSpeed-0.3.0-win-x64.exe"
             },
             {
               "name": "update.json",

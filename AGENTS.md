@@ -5,7 +5,7 @@
 - 每次改动后运行 `dotnet build` 与 `dotnet test`，保持零警告、全绿（`TreatWarningsAsErrors` 已开启）。
 - 控制接口不要用 `HttpListener`（非本机监听需要管理员 urlacl），用 Kestrel。
 - 不要给控制接口加执行任意命令或读写文件的能力；只接受私有地址段的请求。
-- 用户可见名称一律「内网测速」；代码标识（命名空间、程序集、MSIX 包标识）用 ASCII 的 `LanSpeed.*`。
+- 用户可见名称一律「内网测速」；代码标识（命名空间、程序集）用 ASCII 的 `LanSpeed.*`。
 - **仅 Windows 10 1809+**：不做 Linux / macOS 节点；跨平台测速继续用 1Panel。Core / CLI / App 均面向 Windows。
 - iperf3 资源只在 `assets/iperf3/win64/` 更新，并同步更新 `SHA256SUMS`；运行时按校验落盘
   `%LOCALAPPDATA%\LanSpeed\iperf3\<版本>\`，`iperf3.exe` 与 `cygwin1.dll` 必须同目录；产品路径固定 `--json-stream`。
@@ -18,7 +18,5 @@
   它参与构建但不受 `TreatWarningsAsErrors` 约束（XAML 生成代码告警不受控）；
   界面逻辑一律复用 `LanSpeed.Core`（Scanner/GroupRunner/HistoryStore/PairedHostStore），不要在页面里复制业务逻辑；
   Win11 启用 Mica，Win10 回退默认背景。
-- MSIX 打包在 Release 配置（`dotnet build src/LanSpeed.App -c Release`），签名证书用
-  `packaging/make-cert.ps1` 生成自签名测试证书并把指纹更新进 csproj；正式发布必须换正式代码签名证书。
-- 发布只用 `packaging/publish.ps1`（GitHub CLI `gh release`），仅 win-x64 / amd64，不制作 ARM 包。
+- 发布是单个自包含 exe：`packaging/publish.ps1` 打出 `LanSpeed-<版本>-win-x64.exe`，再用 GitHub CLI `gh release` 上传该 exe 与 `update.json`。不制作 MSIX，不制作 zip，不制作 ARM 包。
   最低版本写在 `packaging/min-version.txt`（不得高于正在发布的版本）。客户端低于该版本必须强制更新，否则为可选更新。

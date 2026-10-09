@@ -16,7 +16,7 @@ Windows 局域网测速工具。每台电脑运行同一个程序即可互相测
 | 链路健康 | ✅ 低于千兆醒目标记为排查重点（**不拦截开测**） |
 | 历史 | ✅ SQLite，上限 100，CSV 导出 |
 | WinUI 3 | ✅ NavigationView、Win11 Mica、LiveCharts2、矩阵热力 |
-| MSIX / 发布 | ✅ 自签名测试包；`packaging/publish.ps1` 用 GitHub CLI 发布 amd64。低于最低版本强制更新，否则可选。正式代码签名待更换 |
+| 发布 | ✅ 下载 `LanSpeed-<版本>-win-x64.exe` 后直接运行。`packaging/publish.ps1` 用 GitHub CLI 发布 amd64 单文件。低于最低版本强制更新，否则可选 |
 
 ## 构建与测试
 
@@ -29,7 +29,7 @@ dotnet test
 
 ## 发布（仅 amd64）
 
-需要已登录的 GitHub CLI（`gh auth login`）。最低版本在 `packaging/min-version.txt`：低于它的已安装版本必须更新，否则是可选更新。脚本不上传 ARM 包。
+需要已登录的 GitHub CLI（`gh auth login`）。脚本打出 `LanSpeed-<版本>-win-x64.exe`，下载后双击运行。最低版本在 `packaging/min-version.txt`：低于它的版本必须更新，否则是可选更新。脚本不上传 ARM 包。
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging/publish.ps1 -CheckOnly

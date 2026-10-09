@@ -2,23 +2,29 @@ using System.Diagnostics;
 
 namespace LanSpeed.App.Services;
 
-/// <summary>把已下载的 MSIX 交给系统「应用安装程序」，不经过控制接口。</summary>
+/// <summary>延迟启动已下载的 exe。当前进程仍占着单实例锁，必须先退出。</summary>
 internal static class UpdateInstaller
 {
-    public static void Launch(string msixPath)
+    public static void Launch(string exePath)
     {
-        if (!File.Exists(msixPath))
+        if (!File.Exists(exePath))
         {
-            throw new FileNotFoundException("找不到已下载的安装包。", msixPath);
+            throw new FileNotFoundException("找不到已下载的程序。", exePath);
         }
 
         try
         {
-            Process.Start(new ProcessStartInfo(msixPath) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c ping 127.0.0.1 -n 3 >nul & start \"\" \"" + exePath + "\"",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            });
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            throw new InvalidOperationException("无法打开安装包。请确认已安装「应用安装程序」。");
+            throw new InvalidOperationException("无法启动已下载的程序。");
         }
     }
 }

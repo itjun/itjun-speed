@@ -10,6 +10,7 @@ public static class Program
     private static void Main(string[] args)
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
+        PriSidecar.Ensure();
         if (!SingleInstance.TryAcquire())
         {
             return;

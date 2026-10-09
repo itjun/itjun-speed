@@ -57,11 +57,11 @@ public static class AppUpdateFlow
         return offer.Requirement switch
         {
             UpdateRequirement.Required when offer.DownloadUrl is null =>
-                $"当前版本 {offer.Current} 低于最低版本 {Floor(offer)}，但发布里没有可用的 amd64 安装包。",
+                $"当前版本 {offer.Current} 低于最低版本 {Floor(offer)}，但发布里没有可用的 amd64 程序。",
             UpdateRequirement.Required =>
                 $"当前版本 {offer.Current} 低于最低版本 {Floor(offer)}，必须更新到 {offer.Latest}。",
             UpdateRequirement.Optional when offer.DownloadUrl is null =>
-                $"发现新版本 {offer.Latest}（当前 {offer.Current}），但发布里没有可用的 amd64 安装包。",
+                $"发现新版本 {offer.Latest}（当前 {offer.Current}），但发布里没有可用的 amd64 程序。",
             UpdateRequirement.Optional =>
                 $"发现新版本 {offer.Latest}（当前 {offer.Current}），可以稍后更新。",
             _ => $"已是最新版本 {offer.Current}。",
@@ -161,7 +161,7 @@ public static class AppUpdateFlow
 
     private static async Task<string?> DownloadAndLaunchAsync(XamlRoot root, HttpClient http, UpdateOffer offer)
     {
-        var text = new TextBlock { Text = "正在下载安装包…", TextWrapping = TextWrapping.Wrap, MaxWidth = 460 };
+        var text = new TextBlock { Text = "正在下载…", TextWrapping = TextWrapping.Wrap, MaxWidth = 460 };
         var dialog = new ContentDialog
         {
             Title = "正在更新",
@@ -186,7 +186,7 @@ public static class AppUpdateFlow
                     "LanSpeed",
                     "updates");
                 string path = await UpdateDownloader.DownloadAsync(http, offer.DownloadUrl!, offer.FileName!, dir);
-                text.Text = "正在打开安装程序…";
+                text.Text = "正在启动新版本…";
                 UpdateInstaller.Launch(path);
                 allowClose = true;
                 App.ExitApp();

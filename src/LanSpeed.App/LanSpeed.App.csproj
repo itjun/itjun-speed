@@ -20,16 +20,17 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
 
-  <!-- MSIX 打包（§10）：清单声明 StartupTask 与防火墙规则；自签名测试证书在 packaging/，正式发布请换购正式代码签名证书 -->
+  <!-- 单文件 exe（§10）：Release 不打 MSIX。publish.ps1 打自包含 win-x64 exe。 -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <WindowsPackageType>MSIX</WindowsPackageType>
-    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
-    <AppxPackageSigningEnabled>true</AppxPackageSigningEnabled>
-    <!-- 从当前用户证书存储按指纹签名（pfx 已导入；密码方式在 CI 下不稳定） -->
-    <PackageCertificateThumbprint>CC7D82F71BA7DA0A95007270C9A641A8BC8E2C0C</PackageCertificateThumbprint>
-    <AppxPackageDir>..\..\packaging\AppPackages\</AppxPackageDir>
-    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <WindowsPackageType>None</WindowsPackageType>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
   </PropertyGroup>
+
+  <!-- 发布脚本传入 LanSpeedPriFile 时，把界面资源嵌进单文件 exe -->
+  <ItemGroup Condition="'$(LanSpeedPriFile)' != ''">
+    <EmbeddedResource Include="$(LanSpeedPriFile)" LogicalName="LanSpeed.App.pri" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />

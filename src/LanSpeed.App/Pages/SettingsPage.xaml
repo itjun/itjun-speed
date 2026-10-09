@@ -38,7 +38,7 @@
                     <Button Content="检查更新" Click="OnCheckUpdate" />
                     <TextBlock x:Name="UpdateText" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
-                <TextBlock Text="检查 GitHub 仓库 itjun/itjun-speed 的最新发布，只使用 amd64 安装包。低于最低版本必须更新，否则可以稍后。" Foreground="Gray" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="检查 GitHub 仓库 itjun/itjun-speed 的最新发布，只下载 amd64 的 exe。低于最低版本必须更新，否则可以稍后。" Foreground="Gray" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
 
             <TextBlock x:Name="VersionText" Foreground="Gray" FontSize="12" />

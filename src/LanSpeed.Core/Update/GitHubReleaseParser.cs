@@ -109,7 +109,7 @@ public static partial class GitHubReleaseParser
 
             if (!TryString(root, "file", out string? file) || !IsAmd64PackageName(file))
             {
-                error = "update.json 的 file 必须是 amd64 的 .msix。";
+                error = "update.json 的 file 必须是 amd64 的 .exe。";
                 return false;
             }
 
@@ -145,7 +145,7 @@ public static partial class GitHubReleaseParser
         }
 
         string lower = file.ToLowerInvariant();
-        if (!lower.EndsWith(".msix", StringComparison.Ordinal))
+        if (!lower.EndsWith(".exe", StringComparison.Ordinal))
         {
             return false;
         }
@@ -172,7 +172,7 @@ public static partial class GitHubReleaseParser
         return value is "amd64" or "x64" or "win-x64";
     }
 
-    /// <summary>只接受本仓库 Releases 下载地址上的 amd64 msix，拒绝查询串和其他主机。</summary>
+    /// <summary>只接受本仓库 Releases 下载地址上的 amd64 exe，拒绝查询串和其他主机。</summary>
     public static bool IsTrustedPackageUrl(string? url) => IsTrustedAssetUrl(url, IsAmd64PackageName);
 
     public static bool IsTrustedManifestUrl(string? url) =>

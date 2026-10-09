@@ -1,6 +1,6 @@
 namespace LanSpeed.Core.Update;
 
-/// <summary>把受信任的 amd64 安装包下载到本地更新目录。</summary>
+/// <summary>把受信任的 amd64 exe 下载到本地更新目录。</summary>
 public static class UpdateDownloader
 {
     public const long MaxBytes = 400L * 1024 * 1024;
@@ -14,12 +14,12 @@ public static class UpdateDownloader
     {
         if (!GitHubReleaseParser.IsTrustedPackageUrl(url))
         {
-            throw new InvalidOperationException("安装包地址不在 itjun/itjun-speed 的 amd64 发布范围内。");
+            throw new InvalidOperationException("程序地址不在 itjun/itjun-speed 的 amd64 发布范围内。");
         }
 
         if (!GitHubReleaseParser.IsAmd64PackageName(fileName))
         {
-            throw new InvalidOperationException("安装包文件名必须是 amd64 的 .msix。");
+            throw new InvalidOperationException("程序文件名必须是 amd64 的 .exe。");
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -29,12 +29,12 @@ public static class UpdateDownloader
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"下载安装包失败（{(int)response.StatusCode}）。");
+            throw new InvalidOperationException($"下载程序失败（{(int)response.StatusCode}）。");
         }
 
         if (response.Content.Headers.ContentLength is > MaxBytes)
         {
-            throw new InvalidOperationException("安装包超过大小限制。");
+            throw new InvalidOperationException("程序超过大小限制。");
         }
 
         Directory.CreateDirectory(destinationDirectory);
@@ -58,7 +58,7 @@ public static class UpdateDownloader
                     total += read;
                     if (total > MaxBytes)
                     {
-                        throw new InvalidOperationException("安装包超过大小限制。");
+                        throw new InvalidOperationException("程序超过大小限制。");
                     }
 
                     await stream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);

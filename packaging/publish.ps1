@@ -1,5 +1,5 @@
-﻿# 用 GitHub CLI 打包并发布「内网测速」的 amd64（win-x64）MSIX。
-# 不编译、不上传 ARM。最低版本高于发布版本、或 MSIX 版本与产品版本不一致时直接失败。
+﻿# 用 GitHub CLI 发布「内网测速」的 amd64（win-x64）单文件 exe。
+# 不编译、不上传 ARM，不制作 MSIX 或 zip。最低版本高于发布版本、或清单版本与产品版本不一致时直接失败。
 # 用法：
 #   powershell -NoProfile -ExecutionPolicy Bypass -File packaging/publish.ps1 -CheckOnly
 #   powershell -NoProfile -ExecutionPolicy Bypass -File packaging/publish.ps1 -Notes "更新说明"
@@ -122,39 +122,47 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $project = Join-Path $root "src\LanSpeed.App\LanSpeed.App.csproj"
-& dotnet build $project -c Release -r win-x64 --nologo
-if ($LASTEXITCODE -ne 0) {
-    throw "Release 构建失败。"
-}
-
-$packages = Join-Path $root "packaging\AppPackages"
-if (-not (Test-Path -LiteralPath $packages)) {
-    throw "没有找到 packaging/AppPackages。Release 构建未产出 MSIX。"
-}
-
-$all = @(Get-ChildItem -Path $packages -Recurse -Filter *.msix)
-$arm = @($all | Where-Object { $_.Name -match 'arm' })
-if ($arm.Count -gt 0) {
-    throw "发现 ARM 安装包，本产品不发布 ARM：$($arm[0].FullName)"
-}
-
-$appxFour = "$versionText.0"
-$matched = @($all | Where-Object { $_.Name -match 'win-x64|_x64|-x64|amd64' -and $_.Name -like "*$appxFour*" })
-if ($matched.Count -lt 1) {
-    throw "没有找到版本 $appxFour 的 amd64 MSIX。"
-}
-
-$picked = $matched | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$canonical = "LanSpeed-$versionText-win-x64.msix"
+$canonical = "LanSpeed-$versionText-win-x64.exe"
 if ($canonical -match 'arm') {
     throw "拒绝上传 ARM 包。"
 }
 
 $stage = Join-Path $env:TEMP ("lanspeed-publish-" + [guid]::NewGuid().ToString("n"))
-New-Item -ItemType Directory -Path $stage | Out-Null
+$published = Join-Path $stage "app"
+New-Item -ItemType Directory -Path $published | Out-Null
 try {
-    $msixPath = Join-Path $stage $canonical
-    Copy-Item -LiteralPath $picked.FullName -Destination $msixPath
+    $loose = Join-Path $stage "loose"
+    & dotnet publish $project -c Release -r win-x64 --self-contained true -o $loose --nologo `
+        -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true `
+        -p:GenerateAppxPackageOnBuild=false -p:AppxPackageSigningEnabled=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release 发布失败。"
+    }
+
+    $pri = Join-Path $loose "LanSpeed.App.pri"
+    if (-not (Test-Path -LiteralPath $pri)) {
+        throw "没有找到 LanSpeed.App.pri。"
+    }
+
+    & dotnet publish $project -c Release -r win-x64 --self-contained true -o $published --nologo `
+        -p:LanSpeedPriFile=$pri `
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+        -p:IncludeAllContentForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+        -p:DebugType=embedded -p:DebugSymbols=false `
+        -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true `
+        -p:GenerateAppxPackageOnBuild=false -p:AppxPackageSigningEnabled=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "单文件发布失败。"
+    }
+
+    $built = Join-Path $published "LanSpeed.App.exe"
+    if (-not (Test-Path -LiteralPath $built)) {
+        throw "没有打出 LanSpeed.App.exe。"
+    }
+
+    $exePath = Join-Path $stage $canonical
+    Copy-Item -LiteralPath $built -Destination $exePath
+
     $jsonPath = Join-Path $stage "update.json"
     $notesPath = Join-Path $stage "notes.md"
     $manifest = [ordered]@{
@@ -177,12 +185,12 @@ try {
     if ($Draft) {
         $ghArgs += "--draft"
     }
-    $ghArgs += @($msixPath, $jsonPath)
+    $ghArgs += @($exePath, $jsonPath)
     & gh @ghArgs
     if ($LASTEXITCODE -ne 0) {
         throw "gh release create 失败。"
     }
-    Write-Output "已发布 v$versionText（最低 $minText，仅 amd64）：$canonical"
+    Write-Output "已发布 v$versionText（最低 $minText，仅 amd64 exe）：$canonical"
 }
 finally {
     if (Test-Path -LiteralPath $stage) {
