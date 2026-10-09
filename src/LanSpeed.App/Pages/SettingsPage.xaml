@@ -38,7 +38,7 @@
                     <Button Content="检查更新" Click="OnCheckUpdate" />
                     <TextBlock x:Name="UpdateText" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" />
                 </StackPanel>
-                <TextBlock Text="更新源在设置文件 settings.json 的 updateCheckUrl 配置（读取 JSON {&quot;version&quot;:&quot;x.y.z&quot;}）；MSIX 安装版由系统商店/证书更新。" Foreground="Gray" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="检查 GitHub 仓库 itjun/itjun-speed 的最新发布，只使用 amd64 安装包。低于最低版本必须更新，否则可以稍后。" Foreground="Gray" FontSize="12" TextWrapping="Wrap" />
             </StackPanel>
 
             <TextBlock x:Name="VersionText" Foreground="Gray" FontSize="12" />

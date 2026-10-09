@@ -20,3 +20,5 @@
   Win11 启用 Mica，Win10 回退默认背景。
 - MSIX 打包在 Release 配置（`dotnet build src/LanSpeed.App -c Release`），签名证书用
   `packaging/make-cert.ps1` 生成自签名测试证书并把指纹更新进 csproj；正式发布必须换正式代码签名证书。
+- 发布只用 `packaging/publish.ps1`（GitHub CLI `gh release`），仅 win-x64 / amd64，不制作 ARM 包。
+  最低版本写在 `packaging/min-version.txt`（不得高于正在发布的版本）。客户端低于该版本必须强制更新，否则为可选更新。

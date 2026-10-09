@@ -17,64 +17,82 @@ public static class FirewallHelper
         bool fwEnabled = false;
         bool hasRule = false;
         bool isPrivate = true;
-        string summary = string.Empty;
+        string? fwError = null;
+        string? netError = null;
         try
         {
-            Type fwType = Type.GetTypeFromProgID("HNetCfg.FwPolicy2")!;
-            dynamic fw = Activator.CreateInstance(fwType)!;
-            fwEnabled = fw.FirewallEnabled[1] /* NET_FW_PROFILE_PRIVATE */ || fw.FirewallEnabled[0] /* PUBLIC */;
-            foreach (dynamic rule in fw.Rules)
+            Type? fwType = Type.GetTypeFromProgID("HNetCfg.FwPolicy2");
+            if (fwType is null)
             {
-                try
+                fwError = "防火墙状态读取失败：系统未注册防火墙策略组件。";
+            }
+            else
+            {
+                dynamic fw = Activator.CreateInstance(fwType)!;
+                fwEnabled = fw.FirewallEnabled[1] /* NET_FW_PROFILE_PRIVATE */ || fw.FirewallEnabled[0] /* PUBLIC */;
+                foreach (dynamic rule in fw.Rules)
                 {
-                    string name = rule.Name is string s ? s : string.Empty;
-                    string exe = rule.ApplicationFullPath is string p ? p : string.Empty;
-                    if (name.Contains("内网测速", StringComparison.Ordinal)
-                        || exe.Equals(Process.GetCurrentProcess().MainModule?.FileName, StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        hasRule = true;
-                        break;
+                        string name = rule.Name is string s ? s : string.Empty;
+                        string exe = rule.ApplicationFullPath is string p ? p : string.Empty;
+                        if (name.Contains("内网测速", StringComparison.Ordinal)
+                            || exe.Equals(Process.GetCurrentProcess().MainModule?.FileName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            hasRule = true;
+                            break;
+                        }
+                    }
+                    catch (Exception ex) when (ex is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or UnauthorizedAccessException)
+                    {
+                        // 个别系统规则的属性读取受限，跳过
                     }
                 }
-                catch (Exception ex) when (ex is Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or UnauthorizedAccessException)
-                {
-                    // 个别系统规则的属性读取受限，跳过
-                }
             }
         }
         catch (Exception ex)
         {
-            summary = $"防火墙状态读取失败：{ex.Message}";
+            fwError = $"防火墙状态读取失败：{ex.Message}";
         }
 
         try
         {
-            Type nlmType = Type.GetTypeFromProgID("Network.ListManager")!;
-            dynamic nlm = Activator.CreateInstance(nlmType)!;
-            bool anyPrivate = false, anyPublic = false;
-            foreach (dynamic net in nlm.GetNetworks(3 /* connected */))
+            // INetworkListManager 没有 ProgID，按 CLSID 创建（§10）。
+            Type? nlmType = Type.GetTypeFromCLSID(new Guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B"));
+            if (nlmType is null)
             {
-                int category = net.GetCategory(); // 0=public 1=private 2=domain
-                if (category == 0)
-                {
-                    anyPublic = true;
-                }
-                else
-                {
-                    anyPrivate = true;
-                }
+                netError = "网络类型读取失败：系统未注册网络列表组件。";
             }
-            isPrivate = !anyPublic || anyPrivate;
+            else
+            {
+                dynamic nlm = Activator.CreateInstance(nlmType)!;
+                bool anyPrivate = false, anyPublic = false;
+                // 1 = NLM_ENUM_NETWORK_CONNECTED，只看当前已连接的网络。
+                foreach (dynamic net in nlm.GetNetworks(1))
+                {
+                    int category = (int)net.GetCategory(); // 0=public 1=private 2=domain
+                    if (category == 0)
+                    {
+                        anyPublic = true;
+                    }
+                    else
+                    {
+                        anyPrivate = true;
+                    }
+                }
+
+                isPrivate = !anyPublic || anyPrivate;
+            }
         }
         catch (Exception ex)
         {
-            summary += $" 网络类型读取失败：{ex.Message}";
+            netError = $"网络类型读取失败：{ex.Message}";
         }
 
-        string state = summary.Length > 0 ? summary.Trim()
-            : $"防火墙{(fwEnabled ? "启用" : "关闭")}；入站规则{(hasRule ? "已放行" : "未放行")}；网络{(isPrivate ? "专用（可测）" : "公用（可能被拦截）")}。"
-              + (fwEnabled && !hasRule ? " 建议点击「一键放行」。" : string.Empty);
-        return new CheckResult(fwEnabled, hasRule, isPrivate, state);
+        string fwPart = fwError ?? $"防火墙{(fwEnabled ? "启用" : "关闭")}；入站规则{(hasRule ? "已放行" : "未放行")}";
+        string netPart = netError ?? $"网络{(isPrivate ? "专用（可测）" : "公用（可能被拦截）")}";
+        string advice = fwError is null && fwEnabled && !hasRule ? " 建议点击「一键放行」。" : string.Empty;
+        return new CheckResult(fwEnabled, hasRule, isPrivate, $"{fwPart}；{netPart}。{advice}");
     }
 
     /// <summary>一键放行：以管理员身份运行 netsh 为本程序与 iperf3 添加入站规则（会弹 UAC）。</summary>

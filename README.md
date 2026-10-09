@@ -16,7 +16,7 @@ Windows 局域网测速工具。每台电脑运行同一个程序即可互相测
 | 链路健康 | ✅ 低于千兆醒目标记为排查重点（**不拦截开测**） |
 | 历史 | ✅ SQLite，上限 100，CSV 导出 |
 | WinUI 3 | ✅ NavigationView、Win11 Mica、LiveCharts2、矩阵热力 |
-| MSIX | ✅ 自签名测试证书；正式签名与自动更新待发布 |
+| MSIX / 发布 | ✅ 自签名测试包；`packaging/publish.ps1` 用 GitHub CLI 发布 amd64。低于最低版本强制更新，否则可选。正式代码签名待更换 |
 
 ## 构建与测试
 
@@ -27,6 +27,15 @@ dotnet build
 dotnet test
 ```
 
+## 发布（仅 amd64）
+
+需要已登录的 GitHub CLI（`gh auth login`）。最低版本在 `packaging/min-version.txt`：低于它的已安装版本必须更新，否则是可选更新。脚本不上传 ARM 包。
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/publish.ps1 -CheckOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/publish.ps1 -Notes "更新说明"
+```
+
 ## 使用
 
 **图形界面**：
@@ -35,7 +44,7 @@ dotnet test
 dotnet run --project src/LanSpeed.App
 ```
 
-界面六页：主机（扫描 / 软配对 / 低于千兆筛选）· 两机测试 · 分组 · 结果（矩阵热力）· 历史 · 设置。
+界面六页：主机（扫描 / 软配对 / 低于千兆筛选）· 两机 · 分组 · 结果（矩阵热力）· 历史 · 设置。
 关闭窗口隐藏到托盘。诊断日志：`%LOCALAPPDATA%\LanSpeed\ui-debug.log`。
 本地库：`%LOCALAPPDATA%\LanSpeed\lanspeed.db`。
 

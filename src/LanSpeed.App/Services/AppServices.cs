@@ -27,6 +27,7 @@ public sealed class AppServices
         Settings = AppSettings.Load();
         Db = new AppDb();
         PairedHosts = new PairedHostStore(Db);
+        Groups = new HostGroupStore(Db);
         History = new HistoryStore(Db);
         Runner = new IperfRunner();
         Node = new LocalNode(Settings.CtrlPort) { Accept = Settings.AllowBeingTested };
@@ -40,6 +41,8 @@ public sealed class AppServices
     public AppDb Db { get; }
 
     public PairedHostStore PairedHosts { get; }
+
+    public HostGroupStore Groups { get; }
 
     public HistoryStore History { get; }
 

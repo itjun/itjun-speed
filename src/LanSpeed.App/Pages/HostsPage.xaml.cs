@@ -62,6 +62,22 @@ public sealed class HostRow
 
     public string PairLabel => Remembered ? "已配对" : (Hello is null ? "—" : "未配对");
 
+    /// <summary>本地分组名；空表示未归入机柜。</summary>
+    public string? GroupName { get; init; }
+
+    /// <summary>本机也可放进分组，即使没有点过「记住」。</summary>
+    public bool IsLocalPlaceable { get; init; }
+
+    public string GroupLabel => string.IsNullOrEmpty(GroupName)
+        ? (Remembered || IsLocalPlaceable ? "未分组" : "—")
+        : GroupName!;
+
+    public Visibility GroupBadgeVisibility => string.IsNullOrEmpty(GroupName) ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility GroupPlainVisibility => string.IsNullOrEmpty(GroupName) ? Visibility.Visible : Visibility.Collapsed;
+
+    public Brush GroupBadgeBrush => new SolidColorBrush(Colors.SteelBlue);
+
     public string PairButtonText => Remembered ? "取消记住" : "记住";
 
     public Visibility PairVisibility => Hello is null ? Visibility.Collapsed : Visibility.Visible;
@@ -168,6 +184,7 @@ public sealed partial class HostsPage : Page
         {
             return;
         }
+        var groups = GroupNamesByNode();
         _allRows = paired.Select(p => new HostRow
         {
             Status = "已配对·离线",
@@ -177,6 +194,7 @@ public sealed partial class HostsPage : Page
             LinkMbps = p.LinkMbps,
             LinkClass = LinkHealth.Classify(p.LinkMbps),
             Remembered = true,
+            GroupName = groups.GetValueOrDefault(p.NodeId),
             Entry = null,
         }).ToList();
         ApplyFilter();
@@ -185,12 +203,19 @@ public sealed partial class HostsPage : Page
     private void FillRows(IEnumerable<HostEntry> hosts)
     {
         var pairedIds = AppServices.Current.PairedHosts.List().Select(p => p.NodeId).ToHashSet();
+        var groups = GroupNamesByNode();
+        string localId = AppServices.Current.Node.Id;
         var list = new List<HostRow>();
         foreach (var h in hosts)
         {
             long link = AppServices.HostLinkMbps(h);
             var cls = LinkHealth.Classify(link);
             bool remembered = h.Hello != null && pairedIds.Contains(h.Hello.Id);
+            string? nodeId = h.Hello?.Id;
+            if (nodeId == null && AppServices.Current.Node.Addrs().Any(a => a.Ip == h.Ip))
+            {
+                nodeId = localId;
+            }
             list.Add(new HostRow
             {
                 Status = h.Status,
@@ -201,6 +226,8 @@ public sealed partial class HostsPage : Page
                 LinkMbps = link,
                 LinkClass = cls,
                 Remembered = remembered,
+                IsLocalPlaceable = nodeId == localId,
+                GroupName = nodeId != null ? groups.GetValueOrDefault(nodeId) : null,
             });
         }
         // 已配对置顶，其次排查对象，再按状态
@@ -227,6 +254,22 @@ public sealed partial class HostsPage : Page
     private void UpdateEmptyHint() => EmptyHint.Visibility = _rows.Count == 0
         ? Visibility.Visible
         : Visibility.Collapsed;
+
+    /// <summary>节点 ID → 本地分组名。未归入机柜的不在表里。</summary>
+    private static Dictionary<string, string> GroupNamesByNode()
+    {
+        var svc = AppServices.Current;
+        var names = svc.Groups.ListGroups().ToDictionary(g => g.Id, g => g.Name);
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var member in svc.Groups.ListMembers())
+        {
+            if (names.TryGetValue(member.GroupId, out string? name))
+            {
+                map[member.NodeId] = name;
+            }
+        }
+        return map;
+    }
 
     private static Brush StatusColor(string status) => status switch
     {
@@ -256,6 +299,7 @@ public sealed partial class HostsPage : Page
         else
         {
             store.Forget(row.Hello.Id);
+            AppServices.Current.Groups.RemoveMember(row.Hello.Id);
         }
         // 重建行（x:Bind 默认 OneTime，需新实例才能刷新配对文案）
         int idx = _allRows.IndexOf(row);
@@ -271,6 +315,8 @@ public sealed partial class HostsPage : Page
                 LinkMbps = row.LinkMbps,
                 LinkClass = row.LinkClass,
                 Remembered = next,
+                IsLocalPlaceable = row.IsLocalPlaceable,
+                GroupName = next ? row.GroupName : null,
             };
         }
         _allRows = _allRows

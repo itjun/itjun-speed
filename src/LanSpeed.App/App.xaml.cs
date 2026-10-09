@@ -32,6 +32,7 @@ public partial class App : Application
         _window = new MainWindow();
         MainWnd = _window;
         _window.Activate();
+        SingleInstance.Listen(_window);
         _ = AppServices.Current.StartAsync();
     }
 

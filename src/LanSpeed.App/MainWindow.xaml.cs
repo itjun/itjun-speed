@@ -4,6 +4,7 @@ using H.NotifyIcon;
 using LanSpeed.App.Pages;
 using LanSpeed.App.Services;
 using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -73,6 +74,7 @@ public sealed partial class MainWindow : Window
         if (Content is FrameworkElement content)
         {
             content.Loaded += (_, _) => SyncResizer();
+            content.Loaded += async (_, _) => await AppUpdateFlow.PromptAsync(content.XamlRoot, interactive: false);
         }
     }
 
@@ -176,6 +178,9 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATAW
@@ -307,8 +312,14 @@ public sealed partial class MainWindow : Window
 
     public void ShowMainWindow()
     {
+        if (AppWindow.Presenter is OverlappedPresenter presenter
+            && presenter.State == OverlappedPresenterState.Minimized)
+        {
+            presenter.Restore();
+        }
         AppWindow.Show();
         Activate();
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
 
     private void OnTrayAcceptToggle(object sender, RoutedEventArgs e)

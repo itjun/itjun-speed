@@ -3,7 +3,7 @@
 > 本文档自包含，位于新仓库 `docs/DESIGN.md`，不依赖 1Panel 仓库。附录 A 已与 1Panel 源码逐条核对，差异与新增设计均在文中标注。
 > 技术栈：C# / .NET 10 LTS / WinUI 3（Windows App SDK）/ CommunityToolkit.Mvvm / SQLite / 内置 iperf3 3.22。
 > 平台：**仅 Windows 10 1809+**（不做 Linux / macOS 节点；跨平台场景继续用 1Panel）。
-> 状态：引擎与对等节点架构已落地；产品面按 Windows-only 重做——软配对（SQLite）、历史上限 100、Win11 Mica、低于千兆排查标记（不拦截开测）。正式代码签名与自动更新服务留待发布时接入。
+> 状态：引擎与对等节点架构已落地；产品面按 Windows-only 重做——软配对（SQLite）、历史上限 100、Win11 Mica、低于千兆排查标记（不拦截开测）。更新检查走 GitHub Releases（仅 amd64；低于最低版本强制更新，否则可选）。正式代码签名仍待发布时更换。
 
 ---
 
@@ -68,9 +68,11 @@ iperf3 -c <ip> -p 5201 -t 2 -P 1 -i 1 --json-stream --forceflush --bidir -u -b 2
 | 测速引擎 | 内置 iperf3 3.22（`iperf3.exe` + `cygwin1.dll`），固定 `--json-stream` | 需要管理子进程 |
 | 链路健康 | &lt;1000 Mbps 标记排查，不拦截 | `LinkHealth` 分类；主机筛选「仅问题主机」 |
 | 信任模型 | 不鉴权 | 用“允许被测”开关与资源上限兜底（§9） |
-| 运行方式 | 托盘程序 + 开机自启 | 用户登录后才能被测 |
+| 运行方式 | 托盘程序 + 开机自启；同一用户会话只运行一个进程 | 再次启动唤起已有窗口（已藏到托盘则重新显示）并立刻退出新进程，避免占用第二个控制端口；用户登录后才能被测 |
 | 打包 | MSIX 优先；备选未打包 + WiX | MSIX 清单可声明防火墙规则与开机自启（§10） |
-| 最低系统 | Windows 10 1809（17763）及以上，x64；ARM64 可运行（iperf3 走 x64 模拟，速度不作准） | Windows App SDK 的下限 |
+| 发布 | GitHub CLI（`gh release`），脚本 `packaging/publish.ps1` | 只上传 amd64（win-x64）MSIX 与 `update.json`；不制作、不上传 ARM |
+| 更新 | 低于 `packaging/min-version.txt` **强制更新**，否则有新版本时**可选更新** | 数字比较 `major.minor.patch`；离线检查失败不锁死（§10.1） |
+| 最低系统 | Windows 10 1809（17763）及以上，仅 x64（amd64） | 不提供 ARM 安装包；Windows App SDK 下限 17763 |
 
 ## 3. 整体架构
 
@@ -100,7 +102,7 @@ flowchart LR
   orch --> ui
 ```
 
-进程内结构：Generic Host 托管各后台服务，WinUI 3 只是其中一个前端；关闭窗口只隐藏到托盘，不退出进程。
+进程内结构：Generic Host 托管各后台服务，WinUI 3 只是其中一个前端；关闭窗口只隐藏到托盘，不退出进程。同一 Windows 登录会话只允许一个进程：入口在创建窗口前占住会话级互斥量，第二个进程通知已有实例显示主窗口后退出，不启动节点服务。
 
 | 组件 | 职责 |
 |---|---|
@@ -274,7 +276,14 @@ flowchart LR
 - 每轮先找“同网段”路径：B 的 `lan` 地址中，与 A 某个 `lan` 地址同网段的那个（附录 A.7）；没有就标记 `nolan`（不在同一网段），跳过。
 - 每轮先探测；失败标记原因，不阻塞后续轮次。
 - 可随时停止，已完成轮次保留。
-- 分组保存在发起机本地，成员按节点 ID 记录，IP 变化后通过发现重新匹配。
+
+本地分组是一层自由命名的机柜（名称自定，例如「3楼-财务室」），存在发起机 SQLite，不是当次扫描的临时勾选：
+
+- 成员按节点 ID 记录，一台主机只属于一个分组。可摆放的主机 = 已记住的主机 + 本机（本机不必先点记住）。
+- 未放入任何分组的主机显示在固定的「未分组」柜，该柜不入库。
+- 分组顺序和柜内主机顺序都持久化。界面可拖动：柜内排序、跨柜搬移、柜子之间调顺序。可改名、删除；删除后主机回到未分组。重名不允许。
+- 取消记住时同时去掉该节点的分组成员。IP 变化后通过发现重新匹配。
+- 测速对象是选中的一柜。只解析该柜里当前在线且可测的主机（IP 取最近扫描，没有则用记住时的地址）；离线主机留在柜里、不参与本轮。至少 2 台才开测。低千兆只警告，不拦截。
 
 每轮状态：`pending` → `probe` → `running` → `done` / `failed` / `nolan` / `stopped`。
 
@@ -282,19 +291,23 @@ flowchart LR
 
 视觉跟随 Windows Fluent 设计：Win11 `MicaBackdrop`、系统强调色、跟随系统深浅色（Win10 无 Mica 时用默认主题背景）。`NavigationView` + CommunityToolkit.Mvvm：
 
-- **主机**：扫描；主机表（状态、计算机名、IP、MAC、版本、**链路健康角标**）；软配对「记住 / 取消」；筛选「仅问题主机」（低于千兆）；已配对置顶；手动添加 IP。
-- **两机测试**：A/B 从扫描与配对列表选择；任一侧低于千兆时显示警告条（**仍可开测**）；1Panel 风格报表 + LiveCharts2 曲线 + 评价。
-- **分组**：新建 / 编辑分组（只能勾选“已安装 · 可测”的主机）；星形或矩阵；中心机；参数；预计耗时；开始 / 停止；逐轮进度；低千兆警告不拦截。
+- **主机**：扫描；主机表（状态、计算机名、IP、MAC、版本、**链路健康角标**、**本地分组**）；软配对「记住 / 取消」；筛选「仅问题主机」（低于千兆）；已配对置顶；手动添加 IP。已归入机柜的扫描结果显示分组名，已记住但未归入的显示「未分组」。
+- **两机**：A/B 从扫描与配对列表选择；任一侧低于千兆时显示警告条（**仍可开测**）；1Panel 风格报表 + LiveCharts2 曲线 + 评价。
+- **分组**：一层本地机柜（自由命名）；记住的主机与本机拖入分组，未分组单独成柜；选中一柜后星形或矩阵测速；低千兆警告不拦截；逐轮进度。
 - **结果**：
   - 星形：表格，每行一台，显示双向吞吐、RTT、重传 / 丢包、结论等级、链路健康。
   - 矩阵：N×N 热力图（`ItemsRepeater`），单元格为“行 → 列”吞吐，颜色按结论等级；点击查看单对详情。
   - 单对详情：吞吐曲线（LiveCharts2）、汇总、结论文字；`LinkMbps &lt; 1000` 时评价 notes 追加排查提示。
 - **历史**：列表、详情、删除、导出 CSV（SQLite，上限 100）。
-- **设置**：允许被测、端口、网卡过滤、防火墙自检与修复、开机自启、检查更新。
+- **设置**：允许被测、端口、网卡过滤、防火墙自检与修复、开机自启、检查更新（§10.1：启动时检查；低于最低版本的对话框不可跳过）。
 
 托盘（H.NotifyIcon.WinUI）：图标区分空闲 / 被测中；菜单含“允许被测”开关、打开主界面、中止当前测速、退出。被测状态由图标与 tooltip 表达，可从托盘中止（气泡通知的实现说明见下方踩坑记录）。
 
-> 实现说明（2026-10-08，Windows-only 重做后续）：六页与托盘——主机（自动扫描、软配对、低于千兆角标与筛选）、两机测试（配对列表 + 链路警告条不拦截 + 1Panel 风格报表 + LiveCharts2）、分组（低千兆警告不拦截）、结果（矩阵 N×N 热力 + 轮次表）、历史（SQLite 上限 100）、设置。Win11 `MicaBackdrop`；CommunityToolkit.Mvvm 已引入。关闭窗口隐藏到托盘。注意 WinUI 页面事件在 InitializeComponent 中途即可能触发，处理函数必须做「页面就绪」守卫。
+> 实现说明（2026-10-08，Windows-only 重做后续）：六页与托盘——主机（自动扫描、软配对、低于千兆角标与筛选）、两机（配对列表 + 链路警告条不拦截 + 1Panel 风格报表 + LiveCharts2）、分组（低千兆警告不拦截）、结果（矩阵 N×N 热力 + 轮次表）、历史（SQLite 上限 100）、设置。Win11 `MicaBackdrop`；CommunityToolkit.Mvvm 已引入。关闭窗口隐藏到托盘。注意 WinUI 页面事件在 InitializeComponent 中途即可能触发，处理函数必须做「页面就绪」守卫。
+>
+> 单实例（2026-10-09）：`Program.Main` 在 `Application.Start` 之前用 `Local\LanSpeed.SingleInstance` 占位。已有进程时，新进程放开前台权限、置位 `Local\LanSpeed.ShowMainWindow`，并用 `AppInstance` 把激活转交后退出。已有实例在 UI 线程 `Show` + `Activate`。互斥量被遗弃（上次崩溃）时由新进程接管，不锁死启动。
+>
+> 本地分组（2026-10-09）：`host_groups` / `host_group_members` 按节点 ID 记住机柜与顺序。分组页用换行卡片拖动调整；对选中的一柜开测，离线成员不参与。
 
 > 图标与托盘踩坑（2026-10-08，Win10 19044 实测）：
 > 1. **窗口图标**：WinUI 3 桌面窗口类（`WinUIDesktopWin32WindowClass`）注册时不带图标，exe 内嵌图标不会自动成为窗口图标——标题栏、任务栏、Alt-Tab 全部空白。必须在窗口构造时 `AppWindow.SetIcon(<安装目录>\Assets\app.ico)`（csproj 已把 `Assets\*.ico` 作为 Content 复制，打包/未打包路径一致取 `AppContext.BaseDirectory`）。
@@ -325,9 +338,43 @@ flowchart LR
 | 回环高带宽 UDP | 127.0.0.1 上高速 UDP 报 `unable to read from stream socket: Resource temporarily unavailable`（2026-10-08 实测，裸 iperf3 同样复现，低速率如 10 Mbps 正常） | cygwin 版引擎的固有限制，跨机器不受影响；单机自检 UDP 用低速 |
 | 开机自启 | — | MSIX 用 `desktop:StartupTask`；未打包写 `HKCU\...\Run` |
 
+### 10.1 发布与更新
+
+发布渠道是 GitHub 仓库 `itjun/itjun-speed` 的 Releases，只用 GitHub CLI，不另建更新服务器。架构只做 **amd64**（`win-x64`）。不编译、不上传、不安装 ARM / ARM64 包；文件名含 `arm`（不区分大小写）的资产直接丢弃。客户端即使跑在 ARM 设备的 x64 模拟上，更新包仍只取 amd64。
+
+版本号：
+
+- 产品版本是 `Directory.Build.props` 的 `<Version>`，三段 `major.minor.patch`。
+- MSIX `Identity/@Version` 为四段，前三段与产品版本相同，第四段固定 `0`（例如 `0.2.0` → `0.2.0.0`）。客户端比较时忽略第四段、忽略单个前缀 `v` / `V`。
+- 最低版本是仓库文件 `packaging/min-version.txt`（一行三段版本号）。它必须 **小于或等于** 正在发布的版本。发布脚本在调用 `gh` 之前做这项检查，不通过就中止。
+
+`packaging/publish.ps1` 的发布物只有两个：
+
+| 资产 | 内容 |
+|---|---|
+| `LanSpeed-<version>-win-x64.msix` | Release 配置打出的 x64 MSIX（自签名测试证书；正式环境换代码签名证书） |
+| `update.json` | `version`、`minVersion`、`arch`（固定 `amd64`）、`file`（上表文件名） |
+
+发行说明首行固定为 `minVersion: x.y.z`，供人阅读。客户端以 `update.json` 为准；没有该资产时才退回发行说明首行。`update.json` 的 `version` 必须与标签 `vX.Y.Z` 一致，`file` 必须就是该发布里的 amd64 `.msix`。
+
+检查地址默认 `GET https://api.github.com/repos/itjun/itjun-speed/releases/latest`（匿名可读，因此发布不能是 draft / prerelease）。`settings.json` 的 `updateCheckUrl` 只用于把这一 API 换成另一个 https 地址，下载地址仍然只接受：
+
+`https://github.com/itjun/itjun-speed/releases/download/<tag>/<amd64.msix>`
+
+判定（当前 C、发布版本 L、最低版本 M；按数字比较，不用字符串）：
+
+| 条件 | 结果 |
+|---|---|
+| 检查失败，或尚无 Release | 不更新。内网机器经常上不了 GitHub，**不得**因此锁死 |
+| C &lt; M | **强制更新**。对话框只有「立即更新」和「退出」，不能继续使用。仅当 L &gt; C 且存在受信任的 amd64 包时才下载；否则提示没有可用安装包，仍只能重试或退出 |
+| C ≥ M 且 L &gt; C | **可选更新**。可以稍后 |
+| 其余（已是 L 或比 L 更新） | 无更新 |
+
+下载后用系统打开该 `.msix`（应用安装程序），然后退出本进程，避免文件被占用。控制接口不增加下载或拉起安装包的能力。
+
 ## 11. 开发环境（Windows）
 
-1. Windows 10 1809+ 或 Windows 11，x64（ARM64 也可开发，速度测试不作准）。
+1. Windows 10 1809+ 或 Windows 11，x64。不提供 ARM 安装包。
 2. 安装 .NET 10 SDK。
 3. 安装 Visual Studio 2026，勾选“WinUI 应用程序开发”工作负载（WinUI 3 的调试、XAML 热重载和 MSIX 打包依赖它）。日常用 Cursor 写代码，用 Visual Studio 运行调试界面。
 4. 安装 Git、Cursor。
@@ -351,6 +398,9 @@ LanSpeed/
 ├── Directory.Build.props          # 统一 LangVersion、Nullable=enable、TreatWarningsAsErrors
 ├── assets/iperf3/win64/           # iperf3.exe、cygwin1.dll、SHA256SUMS（Windows 专用）
 ├── docs/DESIGN.md                 # 本文档
+├── packaging/
+│   ├── publish.ps1                # GitHub CLI 打包并发布（仅 amd64）
+│   └── min-version.txt            # 低于此版本必须强制更新
 ├── src/
 │   ├── LanSpeed.Core/             # net10.0-windows：与界面无关的全部逻辑（仅 Windows）
 │   │   ├── Iperf/                 # Params、Flow、ClientArgs、StreamParser、ProbeResult
@@ -361,7 +411,8 @@ LanSpeed/
 │   │   ├── Runner/                # IperfRunner、IperfLocator、IperfAssets、Job Object
 │   │   ├── Orchestration/         # PairRunner、GroupRunner、Pairing
 │   │   ├── Verdict/               # 结论规则
-│   │   └── Persistence/           # AppDb（SQLite）、PairedHostStore、HistoryStore（上限 100）
+│   │   ├── Persistence/           # AppDb（SQLite）、PairedHostStore、HistoryStore（上限 100）
+│   │   └── Update/                # 版本比较、GitHub Release 解析（仅 amd64）
 │   ├── LanSpeed.App/              # WinUI 3：MVVM、Mica、托盘、MSIX
 │   └── LanSpeed.Cli/              # 仅 Windows 调试命令行：serve / scan / test / group / history
 └── tests/
@@ -375,7 +426,7 @@ LanSpeed/
 | **M1 引擎与命令行** ✅（2026-10-08） | 解决方案骨架；Core 的 Iperf / Net / Control / Runner；按附录 A 移植解析器与全部单元测试；CLI `serve` 与 `test` | `dotnet test` 全绿（67 项）；两台 Windows 用 CLI 完成 TCP / UDP × 正向 / 反向 / 双向测速，吞吐与直接运行 iperf3 一致（误差 ±3%）——本机回环 + Windows↔Linux 实机已验证 |
 | **M2 发现与扫描** ✅ CLI 层（2026-10-08；WinUI 主机页待 M3） | DiscoveryService、Scanner（ping、ARP、端口探测）、网卡过滤；CLI `scan`；serve 集成发现应答与主动 hello | 同网段能列出全部在线主机，正确标出 §4.3 各状态——实测 192.168.210.0/24 列出 79 台，Linux 节点标「已安装·可测」；NetBIOS 反解延后（§4.2） |
 | **M3 分组测速** ✅（2026-10-08，含 WinUI 界面） | GroupRunner（星形 / 矩阵）、结论规则、历史（JSON + CSV 导出）、CLI `group` / `history`；WinUI 3 五页（主机 / 分组 / 结果 / 历史 / 设置）+ 托盘 | Windows↔Linux 完成星形（bidir 单轮双方向）与矩阵（双向各一轮）；中途停止正确；历史可回看、可导出 CSV；结论规则按 A.10 输出等级与建议；App 启动冒烟验证通过（内嵌节点 39301 正常应答） |
-| **M4 交付** ✅ 基本完成（2026-10-08） | 托盘与被测通知、允许被测开关（§9 落地：关闭后控制接口只留 hello）、防火墙自检与一键放行（netsh + UAC）、开机自启（MSIX StartupTask / 未打包 HKCU Run）、MSIX 打包签名（自签名测试证书）、检查更新（配置 updateCheckUrl） | MSIX 清单声明 StartupTask 与 firewallRules；签名包产出 `packaging/AppPackages/`；正式发布仍需：购买正式代码签名证书、部署自动更新服务 |
+| **M4 交付** ✅ 基本完成（2026-10-08） | 托盘与被测通知、允许被测开关（§9 落地：关闭后控制接口只留 hello）、防火墙自检与一键放行（netsh + UAC）、开机自启（MSIX StartupTask / 未打包 HKCU Run）、MSIX 打包签名（自签名测试证书）、检查更新（§10.1：GitHub Releases，仅 amd64；低于最低版本强制，否则可选） | MSIX 清单声明 StartupTask 与 firewallRules；`packaging/publish.ps1` 用 `gh release` 发布；正式发布仍需更换正式代码签名证书 |
 | M5（第二版） | Windows 服务模式（Worker Service + `UseWindowsService()`，界面经命名管道连接）；可选团队口令 | 另行评审 |
 
 ## 14. 给 Cursor 的启动提示词

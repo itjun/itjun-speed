@@ -61,6 +61,16 @@ public sealed class AppDb : IDisposable
                   payload TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_history_time ON history(time DESC);
+                CREATE TABLE IF NOT EXISTS host_groups (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  name TEXT NOT NULL,
+                  sort_order INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS host_group_members (
+                  node_id TEXT PRIMARY KEY NOT NULL,
+                  group_id TEXT NOT NULL,
+                  sort_order INTEGER NOT NULL
+                );
                 """;
             cmd.ExecuteNonQuery();
             _migrated = true;

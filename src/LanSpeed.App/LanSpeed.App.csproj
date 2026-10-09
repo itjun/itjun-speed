@@ -8,11 +8,14 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- exe/任务栏/窗口图标（多尺寸 ico，16–256） -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- 仅 amd64。不要添加其他 RuntimeIdentifier。 -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <Nullable>enable</Nullable>
+    <!-- 自写 Main：先占单实例，再启动 XAML -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- WinUI/XAML 生成代码可能带第三方警告，不参与零警告约束 -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>

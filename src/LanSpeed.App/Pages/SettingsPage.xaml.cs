@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using LanSpeed.App.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,6 +17,10 @@ public sealed partial class SettingsPage : Page
         PortBox.Value = s.CtrlPort;
         AutoStartSwitch.IsOn = AutoStartHelper.IsEnabled();
         VersionText.Text = $"内网测速 {AppServices.Current.Node.Version}（iperf {AppServices.Current.Node.IperfVersion}）";
+        if (AppUpdateFlow.Last is not null)
+        {
+            UpdateText.Text = AppUpdateFlow.Describe(AppUpdateFlow.Last);
+        }
         _loading = false;
     }
 
@@ -75,29 +78,8 @@ public sealed partial class SettingsPage : Page
 
     private async void OnCheckUpdate(object sender, RoutedEventArgs e)
     {
-        var url = AppServices.Current.Settings.UpdateCheckUrl;
-        var current = AppServices.Current.Node.Version;
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            UpdateText.Text = $"当前版本 {current}；未配置更新源（settings.json 的 updateCheckUrl）。";
-            return;
-        }
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var info = await http.GetFromJsonAsync<UpdateInfo>(url);
-            UpdateText.Text = info?.Version is { } v
-                ? (v.Equals(current, StringComparison.Ordinal) ? $"已是最新版本 {current}。" : $"发现新版本 {v}（当前 {current}）。")
-                : "更新源响应无效。";
-        }
-        catch (Exception ex)
-        {
-            UpdateText.Text = $"检查更新失败：{ex.Message}";
-        }
-    }
-
-    private sealed class UpdateInfo
-    {
-        public string? Version { get; set; }
+        UpdateText.Text = "正在检查更新…";
+        await AppUpdateFlow.PromptAsync(XamlRoot, interactive: true);
+        UpdateText.Text = AppUpdateFlow.Describe(AppUpdateFlow.Last);
     }
 }

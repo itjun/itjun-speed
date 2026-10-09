@@ -5,63 +5,136 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:LanSpeed.App.Pages">
 
-    <ScrollViewer>
-        <Grid RowSpacing="12" Padding="16" MinWidth="900">
+    <ScrollViewer x:Name="RootScroll" HorizontalScrollBarVisibility="Disabled">
+        <Grid RowSpacing="12" Padding="16"
+              Width="{Binding ViewportWidth, ElementName=RootScroll}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" MinHeight="200" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" MinHeight="220" />
             </Grid.RowDefinitions>
 
-            <!-- 成员与模式 -->
-            <StackPanel Orientation="Horizontal" Spacing="24">
-                <StackPanel Spacing="8">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="240" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Content="新建分组" Click="OnCreateGroup" VerticalAlignment="Center" />
+                <TextBox x:Name="SearchBox" Grid.Column="1" PlaceholderText="搜索名称或 IP"
+                         TextChanged="OnSearchChanged" VerticalAlignment="Center" />
+                <TextBlock x:Name="GroupStats" Grid.Column="2" VerticalAlignment="Center"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Grid>
+
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16">
+                <StackPanel Spacing="4">
                     <TextBlock Text="模式" FontWeight="SemiBold" />
-                    <RadioButton x:Name="ModeStar" Content="星形（中心机 × 其余，双向）" IsChecked="True" GroupName="mode" />
-                    <RadioButton x:Name="ModeMesh" Content="矩阵（全部有序对，单向）" GroupName="mode" />
+                    <RadioButton x:Name="ModeStar" Content="星形（中心机 × 其余，双向）" IsChecked="True" GroupName="mode"
+                                 Checked="OnModeChanged" />
+                    <RadioButton x:Name="ModeMesh" Content="矩阵（全部有序对，单向）" GroupName="mode"
+                                 Checked="OnModeChanged" />
                 </StackPanel>
-                <StackPanel Spacing="8" MinWidth="260">
+                <StackPanel Spacing="4" MinWidth="220" VerticalAlignment="Top">
                     <TextBlock Text="中心机（星形时）" FontWeight="SemiBold" />
-                    <ComboBox x:Name="CenterCombo" HorizontalAlignment="Stretch" PlaceholderText="默认第一个成员" />
-                    <TextBlock x:Name="MemberHint" Foreground="Gray" FontSize="12" TextWrapping="Wrap"
-                               Text="勾选「已安装·可测」的主机（含本机）参与分组；至少 2 台。先在「主机」页扫描。" />
+                    <ComboBox x:Name="CenterCombo" HorizontalAlignment="Stretch" PlaceholderText="选择中心机" />
                 </StackPanel>
-                <StackPanel Spacing="8">
+                <StackPanel Spacing="4" VerticalAlignment="Top">
                     <TextBlock Text="参数" FontWeight="SemiBold" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <NumberBox x:Name="DurationBox" Header="时长（秒）" Value="10" Minimum="3" Maximum="300" SpinButtonPlacementMode="Compact" Width="110" />
                         <NumberBox x:Name="ParallelBox" Header="并行流" Value="4" Minimum="1" Maximum="64" SpinButtonPlacementMode="Compact" Width="90" />
-                        <CheckBox x:Name="UdpCheck" Content="UDP" />
+                        <CheckBox x:Name="UdpCheck" Content="UDP" VerticalAlignment="Bottom" />
                         <NumberBox x:Name="BandwidthBox" Header="UDP 总带宽 Mbps（0 不限）" Value="200" Minimum="0" Width="180" />
                     </StackPanel>
                 </StackPanel>
             </StackPanel>
 
-            <!-- 成员列表 + 开始 -->
-            <StackPanel Grid.Row="1" Spacing="8">
+            <StackPanel Grid.Row="2" Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="12">
-                    <Button x:Name="StartButton" Content="开始分组测速" Style="{StaticResource AccentButtonStyle}" Click="OnStart" />
+                    <Button x:Name="StartButton" Content="开始测速" Style="{StaticResource AccentButtonStyle}" Click="OnStart" />
                     <Button x:Name="StopButton" Content="停止" Click="OnStop" IsEnabled="False" />
-                    <ProgressRing x:Name="RunRing" IsActive="False" Width="24" />
-                    <TextBlock x:Name="RunSummary" VerticalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    <ProgressRing x:Name="RunRing" IsActive="False" Width="24" Height="24" />
+                    <TextBlock x:Name="RunSummary" VerticalAlignment="Center" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
+                <TextBlock x:Name="MemberHint" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap"
+                           Text="点选一个分组后，对其中在线可测的主机开测。主机请先在「主机」页记住。" />
                 <InfoBar x:Name="LinkWarnBar" IsOpen="False" Severity="Warning" IsClosable="False"
                          Title="分组含低于千兆主机"
-                         Message="已勾选主机中存在协商低于千兆的链路，应作为排查重点；仍可开始测速。" />
+                         Message="已选分组中存在协商低于千兆的链路，应作为排查重点；仍可开始测速。" />
             </StackPanel>
 
-            <StackPanel Grid.Row="2" x:Name="MembersPanel" Spacing="4" />
+            <ItemsRepeater x:Name="CabinetRepeater" Grid.Row="3">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout MinItemWidth="300" MinColumnSpacing="12" MinRowSpacing="12"
+                                       ItemsJustification="Start" ItemsStretch="Fill" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="local:Cabinet">
+                        <Border BorderBrush="{x:Bind FrameBrush, Mode=OneWay}" BorderThickness="2" CornerRadius="8" Padding="10"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                Tag="{x:Bind}" AllowDrop="True" Tapped="OnCabinetTapped"
+                                DragOver="OnCabinetDragOver" Drop="OnCabinetDrop">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="≡" FontSize="16" VerticalAlignment="Center" CanDrag="True"
+                                               Tag="{x:Bind}" DragStarting="OnCabinetDragStarting"
+                                               Visibility="{x:Bind NamedVisibility}"
+                                               ToolTipService.ToolTip="拖动调整分组顺序" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Title, Mode=OneWay}" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                Visibility="{x:Bind NamedVisibility}">
+                                        <Button Content="改名" Tag="{x:Bind}" Click="OnRename" Padding="8,2" />
+                                        <Button Content="删除" Tag="{x:Bind}" Click="OnDelete" Padding="8,2" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="把记住的主机拖进分组" FontSize="12"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Visibility="{x:Bind UngroupedVisibility}" TextWrapping="Wrap" />
+                                <ListView ItemsSource="{x:Bind Hosts}" Tag="{x:Bind}"
+                                          SelectionMode="Single" CanDragItems="True" AllowDrop="True"
+                                          CanReorderItems="{x:Bind AllowReorder}"
+                                          DragItemsStarting="OnHostDragStarting"
+                                          DragItemsCompleted="OnHostDragCompleted"
+                                          DragOver="OnHostDragOver" Drop="OnHostDrop"
+                                          MinHeight="48" MaxHeight="280">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="local:CabinetHost">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{x:Bind NameBrush}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{x:Bind Detail}" FontSize="12"
+                                                           Foreground="{x:Bind NameBrush}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
 
-            <!-- 逐轮进度 -->
-            <Grid Grid.Row="3">
+            <Grid Grid.Row="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="*" MinHeight="160" />
                 </Grid.RowDefinitions>
                 <TextBlock Text="轮次进度" FontWeight="SemiBold" Margin="0,8,0,4" />
-                <ListView Grid.Row="1" x:Name="RoundList" SelectionMode="None">
+                <ListView Grid.Row="1" x:Name="RoundList" SelectionMode="None" MaxHeight="280">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="local:RoundRow">
                             <Grid ColumnSpacing="16" Padding="4">
